@@ -5,6 +5,7 @@ const { mongoConnect } = require('./util/database');
 const multer = require('multer');
 const { storageEngine, fileFilter } = require('./util/multer configurations');
 const { join } = require('path');
+const { notFound, errorHandlingMiddleware } = require('./middlewares/errors');
 
 
 const app = express();
@@ -19,9 +20,9 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-app.use();
+app.use(notFound);
 
-app.use();
+app.use(errorHandlingMiddleware);
 
 mongoConnect()
     .then(() => {
