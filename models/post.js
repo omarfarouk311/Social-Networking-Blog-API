@@ -11,7 +11,7 @@ module.exports = class Post {
         this.createdAt = createdAt;
     }
 
-    async save() {
+    async create() {
         const db = getDb();
         const { insertedId } = await db.collection('posts').insertOne(this);
         this._id = insertedId;
