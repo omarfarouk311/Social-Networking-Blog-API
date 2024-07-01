@@ -19,15 +19,9 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-app.use((req, res, next) => {
-    res.status(404).json({ message: 'Page not found' });
-});
+app.use();
 
-app.use((req, res, next, err) => {
-    console.error(err);
-    const statusCode = err.statusCode || 500;
-    res.status(statusCode).json({ message: err.message });
-});
+app.use();
 
 mongoConnect()
     .then(() => {
