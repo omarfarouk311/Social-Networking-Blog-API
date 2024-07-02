@@ -6,7 +6,7 @@ const multer = require('multer');
 const { storageEngine, fileFilter } = require('./util/multer configurations');
 const { join } = require('path');
 const { notFound, errorHandlingMiddleware } = require('./middlewares/errors');
-
+const feedRouter = require('./routes/feed');
 
 const app = express();
 
@@ -19,6 +19,8 @@ app.use(cors({
     origin: [process.env.ORIGIN],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+app.use('/feed', feedRouter)
 
 app.use(notFound);
 
