@@ -2,10 +2,13 @@ const Post = require('../models/post');
 
 exports.getPosts = async (req, res, next) => {
     try {
-        const posts = await Post.fetchPosts();
+        const { page = 1, itemsPerPage = 3 } = req.query;
+        const totalPosts = await Post.countPosts();
+        const posts = await Post.fetchPosts(page, itemsPerPage);
         return res.status(200).json({
             message: 'Posts fetched successfully',
-            posts: posts
+            posts: posts,
+            totalPosts: totalPosts
         });
     }
     catch (err) {
@@ -13,10 +16,18 @@ exports.getPosts = async (req, res, next) => {
     }
 };
 
+exports.getPost = async (req, res, next) => {
+    const { post } = req;
+    return res.status(200), json({
+        message: 'Post fetched successfully',
+        post: post
+    });
+};
+
 exports.createPost = async (req, res, next) => {
     const post = new Post({
         ...req.body,
-        creator: 'Dummy',
+        creator: { name: 'Dummy' },
         createdAt: new Date(Date.now()).toISOString()
     });
 
@@ -26,12 +37,11 @@ exports.createPost = async (req, res, next) => {
             err.statusCode = 422;
             throw err;
         }
-
-        this.imageUrl = req.file.path;
+        post.imageUrl = req.file.path;
         await post.create();
 
         return res.status(201).json({
-            message: 'Created successfully!',
+            message: 'Post created successfully!',
             post: post
         });
     }
@@ -39,4 +49,3 @@ exports.createPost = async (req, res, next) => {
         return next(err);
     }
 };
-

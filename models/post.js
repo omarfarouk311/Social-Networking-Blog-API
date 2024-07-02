@@ -17,8 +17,19 @@ module.exports = class Post {
         this._id = insertedId;
     }
 
-    static async fetchPosts() {
+    static fetchPosts(page, itemsPerPage) {
         const db = getDb();
-        return await db.collection('posts').find().toArray();
+        return db.collection('posts').find()
+            .skip((page - 1) * itemsPerPage)
+            .limit(itemsPerPage)
+            .toArray();
+    }
+
+    static fetchPost(postId) {
+        return db.collection('posts').findOne({ _id: ObjectId.createFromHexString(postId) });
+    }
+
+    static countPosts() {
+        return db.collection('posts').find().countDocuments();
     }
 }
