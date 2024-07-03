@@ -15,6 +15,7 @@ router.route('/post')
 
 router.route('post/:postId')
     .get(checkPostExistence, feedController.getPost)
+    .delete(checkPostExistence, feedController.deletePost)
     .all(notAllowed);
 
 module.exports = router;

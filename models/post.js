@@ -1,5 +1,6 @@
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../util/database.js');
+const { promises: fsPromises } = require('fs');
 
 module.exports = class Post {
     constructor({ _id, title, content, imageUrl, creator, createdAt }) {
@@ -31,5 +32,11 @@ module.exports = class Post {
 
     static countPosts() {
         return db.collection('posts').find().countDocuments();
+    }
+
+    async delete(post) {
+        const { imageUrl } = post;
+        await db.collection('posts').deleteOne({ _id: post._id });
+        await fsPromises.unlink(imageUrl);
     }
 }

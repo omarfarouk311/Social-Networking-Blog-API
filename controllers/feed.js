@@ -49,3 +49,13 @@ exports.createPost = async (req, res, next) => {
         return next(err);
     }
 };
+
+exports.deletePost = async (req, res, next) => {
+    const { post } = req;
+    try {
+        await post.delete();
+    }
+    catch (err) {
+        return next(err);
+    }
+}

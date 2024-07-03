@@ -14,7 +14,7 @@ exports.checkPostExistence = async (req, res, next) => {
             throw err;
         }
 
-        req.post = post;
+        req.post = new Post(post);
         return next();
     }
     catch (err) {
