@@ -1,7 +1,7 @@
 const Post = require('../models/post');
 
 exports.checkPostExistence = async (req, res, next) => {
-    const { postId } = req.params;
+    const { postId } = (req.method === 'GET' ? req.params : req.body);
     try {
         let post;
         if (postId.length === 24) {
