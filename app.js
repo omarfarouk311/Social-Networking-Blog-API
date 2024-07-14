@@ -2,8 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { mongoConnect } = require('./util/database');
-const multer = require('multer');
-const { storageEngine, fileFilter } = require('./util/multer configurations');
 const { join } = require('path');
 const { notFound, errorHandlingMiddleware } = require('./middlewares/errors');
 const feedRouter = require('./routes/feed');
@@ -11,7 +9,6 @@ const feedRouter = require('./routes/feed');
 const app = express();
 
 app.use(express.json());
-app.use(multer(storageEngine, fileFilter).single('image'));
 
 app.use('/images', express.static(join(__dirname, 'images')));
 
