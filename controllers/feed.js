@@ -3,8 +3,8 @@ const Post = require('../models/post');
 exports.getPosts = async (req, res, next) => {
     try {
         const { page = 1, itemsPerPage = 3 } = req.query;
-        const totalPosts = await Post.countPosts();
-        const posts = await Post.fetchPosts(page, itemsPerPage);
+        const promises = [Post.countPosts(), Post.getPosts(page, itemsPerPage)];
+        const [totalPosts, posts] = await Promise.all(promises);
         return res.status(200).json({
             message: 'Posts fetched successfully',
             posts: posts,
@@ -27,8 +27,10 @@ exports.getPost = async (req, res, next) => {
 exports.createPost = async (req, res, next) => {
     const post = new Post({
         ...req.body,
-        creator: { name: 'Dummy' },
-        createdAt: new Date(Date.now()).toISOString()
+        creator: 'dummyId',
+        creationDate: new Date(Date.now()).toISOString(),
+        tags: [],
+        comments: []
     });
 
     try {
