@@ -1,8 +1,9 @@
 const { promises: fsPromises } = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { diskStorage } = require('multer');
+const multer = require('multer');
 
-exports.storageEngine = diskStorage({
+const storageEngine = diskStorage({
     destination: async (req, file, cb) => {
         try {
             await fsPromises.mkdir('images', { recursive: true });
@@ -17,7 +18,7 @@ exports.storageEngine = diskStorage({
     }
 });
 
-exports.fileFilter = (req, file, cb) => {
+const fileFilter = (req, file, cb) => {
     if (file.mimetype === 'image/png' || file.mimetype === 'image/jpg' || file.mimetype === 'image/jpeg') {
         cb(null, true);
     }
@@ -26,3 +27,5 @@ exports.fileFilter = (req, file, cb) => {
         req.invalidFileType = true;
     }
 }
+
+module.exports =  multer({ storage: storageEngine, fileFilter: fileFilter });

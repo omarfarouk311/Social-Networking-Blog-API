@@ -6,8 +6,8 @@ const upload = require('../util/multer configurations');
 const router = Router();
 
 router.route('/posts')
-    .get(upload.array('images', 10), feedController.getPosts)
-    .post(feedController.createPost)
+    .get(feedController.getPosts)
+    .post(upload.array('images', 10), feedController.createPost)
     .all(notAllowed)
 
 router.route('post/:postId')
