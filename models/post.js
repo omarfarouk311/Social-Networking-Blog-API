@@ -3,15 +3,16 @@ const { getDb } = require('../util/database.js');
 const { promises: fsPromises } = require('fs');
 
 module.exports = class Post {
-    constructor({ _id, title, content, imageUrl, creator, creationDate, tags, comments }) {
+    constructor({ _id, title, content, imagesUrls, creatorId, creationDate, tags, commentsIds, likes }) {
         this._id = _id;
         this.title = title;
         this.content = content;
-        this.imageUrl = imageUrl;
-        this.creator = creator;
+        this.imagesUrls = imagesUrls;
+        this.creatorId = creatorId;
         this.creationDate = creationDate;
         this.tags = tags;
-        this.comments = comments;
+        this.commentsIds = commentsIds;
+        this.likes = likes;
     }
 
     async create() {
@@ -25,19 +26,43 @@ module.exports = class Post {
         const results = await db.collection('posts').find()
             .skip((page - 1) * itemsPerPage)
             .limit(itemsPerPage)
-            .project({ content: 0, imageUrl: 0, comments: 0 })
+            .project({ content: 0, imagesUrls: 0, commentsIds: 0 })
             .toArray();
 
-        const promises = results.map(result => {
-            result.creator = db.collection('users').findOne({ _id: result.creator }).project({ name: 1, imageUrl: 1 });
-            return result.creator;
-        });
-        await Promise.all(promises);
+        //join creators
+        await Promise.all(results.map(async result => {
+            const { creatorId } = result;
+            result.creator = await db.collection('users').findOne({
+                _id: creatorId
+            }).project({ name: 1, imageUrl: 1 });
+        }));
+
         return results;
     }
 
-    static getPost(postId) {
-        return db.collection('posts').findOne({ _id: ObjectId.createFromHexString(postId) });
+    static async getPost(postId) {
+        const result = await db.collection('posts').findOne({
+            _id: postId
+        });
+
+        //join creator
+        result.creator = await db.collection('users').findOne({
+            _id: result.creatorId
+        }).project({ name: 1, imageUrl: 1 });
+
+        //join comments
+        result.comments = await db.collection('comments').find({ _id: { $in: result.commentsIds } }).limit(5).toArray();
+        result.commentsIds.splice(0, 5);
+
+        //join comments creators
+        await Promise.all(result.comments.map(async comment => {
+            const { creatorId } = comment;
+            comment.creator = await db.collection('users').findOne({
+                _id: creatorId
+            }).project({ name: 1, imageUrl: 1 });
+        }));
+
+        return results;
     }
 
     static countPosts() {
@@ -45,8 +70,9 @@ module.exports = class Post {
     }
 
     async delete() {
-        const { imageUrl } = this;
+        const { imagesUrls } = this;
         await db.collection('posts').deleteOne({ _id: this._id });
-        fsPromises.unlink(imageUrl).catch(err => console.error(err));
+        imagesUrls.foreach(imageUrl => fsPromises.unlink(imageUrl).catch(err => console.error(err)));
     }
+
 }
