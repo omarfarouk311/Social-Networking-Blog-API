@@ -1,10 +1,10 @@
 const { getDb } = require('../util/database');
 
 module.exports = class Comment {
-    constructor({ content, creationDate, creator, likes, _id }) {
+    constructor({ content, creationDate, creatorId, likes, _id }) {
         this.content = content;
         this.creationDate = creationDate;
-        this.creator = creator;
+        this.creatorId = creatorId;
         this.likes = likes;
         this._id = _id;
     }
@@ -15,4 +15,16 @@ module.exports = class Comment {
         this._id = insertedId;
     }
 
+    static getComments(commentsIds) {
+        const db = getDb();
+        const comments = db.collection('comments').find({ _id: { $in: commentsIds } }).limit(5).toArray();
+        commentsIds.splice(0, 5);
+        return { comments, commentsIds };
+    }
+
+    delete() {
+        return db.collection('comments').deleteOne({ _id: this._id });
+    }
+
+    
 }
