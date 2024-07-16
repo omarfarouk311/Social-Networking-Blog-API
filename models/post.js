@@ -76,16 +76,15 @@ module.exports = class Post {
     }
 
     async update() {
+        const updates = {};
+        if (this.title) updates.title = this.title;
+        if (this.content) updates.content = this.content;
+        if (this.imagesUrls) updates.imagesUrls = this.imagesUrls;
+        if (this.tags) updates.tags = this.tags;
+
         const result = await db.collection('posts').findOneAndUpdate(
             { _id: this._id },
-            {
-                $set: {
-                    title: this.title,
-                    content: this.content,
-                    imagesUrls: this.imagesUrls,
-                    tags: this.tags
-                }
-            }
+            { $set: { updates } }
         );
 
         result.imagesUrls.forEach(imageUrl => {
