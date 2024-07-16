@@ -72,7 +72,26 @@ module.exports = class Post {
     async delete() {
         const { imagesUrls } = this;
         await db.collection('posts').deleteOne({ _id: this._id });
-        imagesUrls.foreach(imageUrl => fsPromises.unlink(imageUrl).catch(err => console.error(err)));
+        imagesUrls.forEach(imageUrl => fsPromises.unlink(imageUrl).catch(err => console.error(err)));
     }
 
+    async update() {
+        const result = await db.collection('posts').findOneAndUpdate(
+            { _id: this._id },
+            {
+                $set: {
+                    title: this.title,
+                    content: this.content,
+                    imagesUrls: this.imagesUrls,
+                    tags: this.tags
+                }
+            }
+        );
+
+        result.imagesUrls.forEach(imageUrl => {
+            if (!this.imagesUrls.some(newImageUrl => newImageUrl === imageUrl)) {
+                fsPromises.unlink(imageUrl).catch(err => console.error(err));
+            }
+        })
+    }
 }
