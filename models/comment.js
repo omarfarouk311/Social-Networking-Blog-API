@@ -26,5 +26,27 @@ module.exports = class Comment {
         return db.collection('comments').deleteOne({ _id: this._id });
     }
 
-
+    update() {
+        //request to update comment content
+        if (this.content) {
+            return db.collection('comments').updateOne(
+                { _id: this._id },
+                {
+                    $set: {
+                        content: this.content
+                    }
+                }
+            );
+        }
+        //request to increment likes
+        return db.collection('comments').updateOne(
+            { _id: this._id },
+            {
+                $inc: {
+                    likes: 1
+                }
+            }
+        );
+    }
+    
 }
