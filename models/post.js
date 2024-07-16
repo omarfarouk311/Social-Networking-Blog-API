@@ -1,4 +1,3 @@
-const { ObjectId } = require('mongodb');
 const { getDb } = require('../util/database.js');
 const { promises: fsPromises } = require('fs');
 
@@ -43,7 +42,7 @@ module.exports = class Post {
     static async getPost(postId) {
         const result = await db.collection('posts').findOne({
             _id: postId
-        });
+        }).project({ commentsIds: { $slice: [0, 5] } });
 
         //join creator
         result.creator = await db.collection('users').findOne({
@@ -51,8 +50,9 @@ module.exports = class Post {
         }).project({ name: 1, imageUrl: 1 });
 
         //join comments
-        result.comments = await db.collection('comments').find({ _id: { $in: result.commentsIds } }).limit(5).toArray();
-        result.commentsIds.splice(0, 5);
+        result.comments = await db.collection('comments').find({ _id: { $in: result.commentsIds } }).toArray();
+        result.lastCommentId = result.commentsIds[result.commentsIds.length - 1];
+        delete result.commentsIds;
 
         //join comments creators
         await Promise.all(result.comments.map(async comment => {
@@ -62,7 +62,7 @@ module.exports = class Post {
             }).project({ name: 1, imageUrl: 1 });
         }));
 
-        return results;
+        return result;
     }
 
     static countPosts() {
