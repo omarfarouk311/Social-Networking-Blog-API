@@ -15,16 +15,16 @@ module.exports = class Comment {
         this._id = insertedId;
     }
 
-    static getComments(commentsIds) {
+    static getComments(lastCommentId) {
         const db = getDb();
-        const comments = db.collection('comments').find({ _id: { $in: commentsIds } }).limit(5).toArray();
-        commentsIds.splice(0, 5);
-        return { comments, commentsIds };
+        const comments = db.collection('comments').find({ _id: { $gt: lastCommentId } }).limit(5).toArray();
+        lastCommentId = comments[comments.length - 1]['_id'];
+        return { comments, lastCommentId };
     }
 
     delete() {
         return db.collection('comments').deleteOne({ _id: this._id });
     }
 
-    
+
 }
