@@ -75,9 +75,23 @@ module.exports = class Post {
         return db.collection('posts').countDocuments({});
     }
 
-    async delete() {
-        const { imagesUrls } = this;
-        await db.collection('posts').deleteOne({ _id: this._id });
+    async deletePost() {
+        const { imagesUrls, commentsIds } = this;
+        const promises = [db.collection('posts').deleteOne({ _id: this._id }), Comment.deleteComments(commentsIds)];
+        await Promise.all([promises]);
+        imagesUrls.forEach(imageUrl => fsPromises.unlink(imageUrl).catch(err => console.error(err)));
+    }
+
+    static async deletePosts(postsIds) {
+        const posts = db.collection('posts').find({ _id: { $in: postsIds } });
+        const imagesUrls = [], commentsIds = [];
+        posts.forEach(post => {
+            imagesUrls.push(...post.imagesUrls);
+            commentsIds.push(...post.commentsIds);
+        });
+
+        const promises = [db.collection('posts').deleteMany({ _id: { $in: postsIds } }), Comment.deleteComments(commentsIds)];
+        await Promise.all([promises]);
         imagesUrls.forEach(imageUrl => fsPromises.unlink(imageUrl).catch(err => console.error(err)));
     }
 
@@ -97,6 +111,6 @@ module.exports = class Post {
             if (!this.imagesUrls.some(newImageUrl => newImageUrl === imageUrl)) {
                 fsPromises.unlink(imageUrl).catch(err => console.error(err));
             }
-        })
+        });
     }
 }
