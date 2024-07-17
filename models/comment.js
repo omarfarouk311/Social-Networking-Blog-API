@@ -22,8 +22,12 @@ module.exports = class Comment {
         return { comments, lastCommentId };
     }
 
-    delete() {
+    deleteComment() {
         return db.collection('comments').deleteOne({ _id: this._id });
+    }
+
+    static deleteComments(commentsIds) {
+        return db.collection('comments').deleteMany({ _id: { $in: commentsIds } });
     }
 
     update() {
