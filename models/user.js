@@ -68,4 +68,17 @@ module.exports = class User {
             .toArray();
     }
 
+    updateFollowers(followedId, type) {
+        const db = getDb();
+        const promise1 = db.collection('users').updateOne(
+            { _id: this._id },
+            type === 1 ? { $push: { followingIds: followedId } } : { $pull: { followingIds: followedId } }
+        );
+        const promise2 = db.collection('users').updateOne(
+            { _id: followedId },
+            type === 1 ? { $push: { followersIds: this._id } } : { $pull: { followersIds: this._id } }
+        );
+
+        return Promise.all([promise1, promise2]);
+    }
 }
