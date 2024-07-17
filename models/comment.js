@@ -23,40 +23,37 @@ module.exports = class Comment {
     }
 
     deleteComment() {
+        const db = getDb();
         return db.collection('comments').deleteOne({ _id: this._id });
     }
 
     static deleteComments(commentsIds) {
+        const db = getDb();
         return db.collection('comments').deleteMany({ _id: { $in: commentsIds } });
     }
 
-    update() {
-        //request to update comment content
-        if (this.content) {
-            return db.collection('comments').updateOne(
-                { _id: this._id },
-                {
-                    $set: {
-                        content: this.content
-                    }
+    updateComment() {
+        const db = getDb();
+        return db.collection('comments').updateOne(
+            { _id: this._id },
+            {
+                $set: {
+                    content: this.content
                 }
-            );
-        }
-        //request to increment likes
-        if (this.likes) {
-            return db.collection('comments').updateOne(
-                { _id: this._id },
-                {
-                    $inc: {
-                        likes: 1
-                    }
+            }
+        );
+    }
+
+    incrementLikes() {
+        const db = getDb();
+        return db.collection('comments').updateOne(
+            { _id: this._id },
+            {
+                $inc: {
+                    likes: 1
                 }
-            );
-        }
-        //bad request
-        const err = new Error('Bad request');
-        err.statusCode = 400;
-        throw err;
+            }
+        );
     }
 
 }
