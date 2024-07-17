@@ -19,7 +19,7 @@ module.exports = class User {
         this.likedPostsIds = likedPostsIds;
     }
 
-    async create() {
+    async createUser() {
         const db = getDb();
         const { insertedId } = await db.collection('users').insertOne(this);
         this._id = insertedId;
@@ -81,4 +81,29 @@ module.exports = class User {
 
         return Promise.all([promise1, promise2]);
     }
+
+    addBookmark(postId) {
+        const db = getDb();
+        return db.collection('users').updateOne(
+            { _id: this._id },
+            { $push: { bookmarksIds: postId } }
+        );
+    }
+
+    createPost(postId) {
+        const db = getDb();
+        return db.collection('users').updateOne(
+            { _id: this._id },
+            { $push: { postsIds: postId } }
+        );
+    }
+
+    addComment(commentId) {
+        const db = getDb();
+        return db.collection('users').updateOne(
+            { _id: this._id },
+            { $push: { commentsIds: commentId } }
+        );
+    }
+
 }
