@@ -25,6 +25,14 @@ module.exports = class User {
         this._id = insertedId;
     }
 
+    updateUser(updates) {
+        const db = getDb();
+        return db.collection('users').updateOne(
+            { _id: this._id },
+            { $set: updates }
+        );
+    }
+
     static async getUser(userId) {
         const user = await db.collection('users').aggregate([
             {
@@ -103,6 +111,14 @@ module.exports = class User {
         return db.collection('users').updateOne(
             { _id: this._id },
             { $push: { commentsIds: commentId } }
+        );
+    }
+
+    likePost(postId) {
+        const db = getDb();
+        return db.collection('users').updateOne(
+            { _id: this._id },
+            { $push: { likedPostsIds: postId } }
         );
     }
 
