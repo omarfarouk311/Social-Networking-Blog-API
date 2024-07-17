@@ -5,12 +5,12 @@ const { checkPostExistence } = require('../middlewares/validation/post');
 const upload = require('../util/multer configurations');
 const router = Router();
 
-router.route('/posts')
+router.route('/')
     .get(feedController.getPosts)
     .post(upload.array('images', 10), feedController.createPost)
     .all(notAllowed)
 
-router.route('post/:postId')
+router.route('/:postId')
     .get(checkPostExistence, feedController.getPost)
     .delete(checkPostExistence, feedController.deletePost)
     .all(notAllowed);
