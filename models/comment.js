@@ -15,9 +15,9 @@ module.exports = class Comment {
         this._id = insertedId;
     }
 
-    static getComments(lastCommentId) {
+    static getComments(filter) {
         const db = getDb();
-        const comments = db.collection('comments').find({ _id: { $gt: lastCommentId } }).limit(5).toArray();
+        const comments = db.collection('comments').find(filter).limit(10).toArray();
         lastCommentId = comments[comments.length - 1]['_id'];
         return { comments, lastCommentId };
     }
@@ -39,14 +39,20 @@ module.exports = class Comment {
             );
         }
         //request to increment likes
-        return db.collection('comments').updateOne(
-            { _id: this._id },
-            {
-                $inc: {
-                    likes: 1
+        if (this.likes) {
+            return db.collection('comments').updateOne(
+                { _id: this._id },
+                {
+                    $inc: {
+                        likes: 1
+                    }
                 }
-            }
-        );
+            );
+        }
+        //bad request
+        const err = new Error('Bad request');
+        err.statusCode = 400;
+        throw err;
     }
-    
+
 }
