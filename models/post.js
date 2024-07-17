@@ -1,5 +1,6 @@
 const { getDb } = require('../util/database.js');
 const { promises: fsPromises } = require('fs');
+const Comment = require('./comment.js');
 
 module.exports = class Post {
     constructor({ _id, title, content, imagesUrls, creatorId, creationDate, tags, commentsIds, likes }) {
@@ -20,49 +21,54 @@ module.exports = class Post {
         this._id = insertedId;
     }
 
-    static async getPosts(page, itemsPerPage) {
+    static async getPosts(filter) {
         const db = getDb();
-        const results = await db.collection('posts').find()
-            .skip((page - 1) * itemsPerPage)
-            .limit(itemsPerPage)
+        const posts = await db.collection('posts').find(filter)
+            .limit(10)
             .project({ content: 0, imagesUrls: 0, commentsIds: 0 })
             .toArray();
 
         //join creators
-        await Promise.all(results.map(async result => {
-            const { creatorId } = result;
-            result.creator = await db.collection('users').findOne({
+        await Promise.all(posts.map(async post => {
+            const { creatorId } = post;
+            delete post.creatorId;
+            post.creator = await db.collection('users').findOne({
                 _id: creatorId
             }).project({ name: 1, imageUrl: 1 });
         }));
 
-        return results;
+        return posts;
     }
 
     static async getPost(postId) {
-        const result = await db.collection('posts').findOne({
+        const post = await db.collection('posts').findOne({
             _id: postId
-        }).project({ commentsIds: { $slice: [0, 5] } });
+        }).project({ content: 1, imagesUrls: 1, commentsIds: 1 });
 
-        //join creator
-        result.creator = await db.collection('users').findOne({
-            _id: result.creatorId
-        }).project({ name: 1, imageUrl: 1 });
+        //return early incase of no comments on the post
+        if (!post.commentsIds.length) {
+            post.comments = [];
+            post.lastCommentId = null;
+            delete post.commentsIds;
+            return post;
+        }
 
         //join comments
-        result.comments = await db.collection('comments').find({ _id: { $in: result.commentsIds } }).toArray();
-        result.lastCommentId = result.commentsIds[result.commentsIds.length - 1];
-        delete result.commentsIds;
+        const filter = { _id: { $in: post.commentsIds } };
+        post.comments = await Comment.getComments(filter);
+        post.lastCommentId = post.commentsIds[post.commentsIds.length - 1];
+        delete post.commentsIds;
 
         //join comments creators
-        await Promise.all(result.comments.map(async comment => {
+        await Promise.all(post.comments.map(async comment => {
             const { creatorId } = comment;
+            delete comment.creatorId;
             comment.creator = await db.collection('users').findOne({
                 _id: creatorId
             }).project({ name: 1, imageUrl: 1 });
         }));
 
-        return result;
+        return post;
     }
 
     static countPosts() {
