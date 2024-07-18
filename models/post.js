@@ -15,10 +15,23 @@ module.exports = class Post {
         this.likes = likes;
     }
 
-    async create() {
+    async createPost() {
         const db = getDb();
         const { insertedId } = await db.collection('posts').insertOne(this);
         this._id = insertedId;
+    }
+
+    async updatePost(updates) {
+        const result = await db.collection('posts').findOneAndUpdate(
+            { _id: this._id },
+            { $set: { updates } }
+        );
+
+        result.imagesUrls.forEach(imageUrl => {
+            if (!this.imagesUrls.some(newImageUrl => newImageUrl === imageUrl)) {
+                fsPromises.unlink(imageUrl).catch(err => console.error(err));
+            }
+        });
     }
 
     static async getPosts(filter) {
@@ -95,22 +108,24 @@ module.exports = class Post {
         imagesUrls.forEach(imageUrl => fsPromises.unlink(imageUrl).catch(err => console.error(err)));
     }
 
-    async update() {
-        const updates = {};
-        if (this.title) updates.title = this.title;
-        if (this.content) updates.content = this.content;
-        if (this.imagesUrls) updates.imagesUrls = this.imagesUrls;
-        if (this.tags) updates.tags = this.tags;
-
-        const result = await db.collection('posts').findOneAndUpdate(
+    updateLikes(value) {
+        const db = getDb();
+        return db.collection('posts').updateOne(
             { _id: this._id },
-            { $set: { updates } }
-        );
-
-        result.imagesUrls.forEach(imageUrl => {
-            if (!this.imagesUrls.some(newImageUrl => newImageUrl === imageUrl)) {
-                fsPromises.unlink(imageUrl).catch(err => console.error(err));
+            {
+                $inc: {
+                    likes: value
+                }
             }
-        });
+        );
     }
+
+    addComment() {
+        const db = getDb();
+        return db.collection('posts').updateOne(
+            { _id: this._id },
+            { $push: { commentsIds: commentId } }
+        );
+    }
+
 }
