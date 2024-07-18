@@ -1,15 +1,16 @@
 const { getDb } = require('../util/database');
 
 module.exports = class Comment {
-    constructor({ content, creationDate, creatorId, likes, _id }) {
+    constructor({ content, creationDate, creatorId, likes, _id, postId }) {
         this.content = content;
         this.creationDate = creationDate;
         this.creatorId = creatorId;
+        this.postId = postId;
         this.likes = likes;
         this._id = _id;
     }
 
-    async create() {
+    async createComment() {
         const db = getDb();
         const { insertedId } = await db.collection('comments').insertOne(this);
         this._id = insertedId;
@@ -24,12 +25,19 @@ module.exports = class Comment {
 
     deleteComment() {
         const db = getDb();
-        return db.collection('comments').deleteOne({ _id: this._id });
+        const promises = [];
+        promises.push(db.collection('comments').deleteOne({ _id: this._id }));
+        promises.push(db.collection('posts').updateOne({ _id: this.postId }, { $pull: { commentsIds: this._id } }));
+        return Promise.all(promises);
     }
 
-    static deleteComments(commentsIds) {
+    static async deleteComments(commentsIds) {
         const db = getDb();
-        return db.collection('comments').deleteMany({ _id: { $in: commentsIds } });
+        const promises = [];
+        const postsIds = await db.collection('comments').find({ _id: { $in: commentsIds } }).project({ postId: 1, _id: 0 }).toArray();
+        promises.push(db.collection('comments').deleteMany({ _id: { $in: commentsIds } }));
+        promises.push(db.collection('posts').updateMany({ _id: { $in: postsIds } }, { $pull: { commentsIds: this._id } }));
+        return Promise.all(promises);
     }
 
     updateComment() {
@@ -44,13 +52,13 @@ module.exports = class Comment {
         );
     }
 
-    incrementLikes() {
+    updateLikes(value) {
         const db = getDb();
         return db.collection('comments').updateOne(
             { _id: this._id },
             {
                 $inc: {
-                    likes: 1
+                    likes: value
                 }
             }
         );
