@@ -1,5 +1,7 @@
 const { getDb } = require('../util/database');
 const Post = require('./post');
+const Comment = require('./comment');
+const { promises: fsPromises } = require('fs');
 
 module.exports = class User {
     constructor({ _id, email, password, name, imageUrl, followingIds, followersIds, bookmarksIds, postsIds,
@@ -31,6 +33,19 @@ module.exports = class User {
             { _id: this._id },
             { $set: updates }
         );
+    }
+
+    deleteUser() {
+        const db = getDb();
+        const { imageUrl } = this;
+        const promises = [];
+        promises.push(Post.deletePosts(this.postsIds));
+        promises.push(Comment.deleteComments(this.commentsIds));
+        promises.push(db.collection('posts').updateMany({ _id: { $in: this.likedPostsIds } }, { $inc: { likes: -1 } }));
+        promises.push(db.collection('users').updateMany({ _id: { $in: this.followersIds } }, { $pull: { followingIds: this._id } }));
+        promises.push(db.collection('users').updateMany({ _id: { $in: this.followingIds } }, { $pull: { followersIds: this._id } }));
+        fsPromises.unlink(imageUrl).catch(err => console.error(err));
+        return Promise.all(promises);
     }
 
     static async getUser(userId) {
