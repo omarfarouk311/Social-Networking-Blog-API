@@ -19,10 +19,11 @@ module.exports = class Post {
         this.likingUsersIds = likingUsersIds;
     }
 
-    async createPost() {
+    async createPost(user) {
         const db = getDb();
         const { insertedId } = await db.collection('posts').insertOne(this);
         this._id = insertedId;
+        return user.createPost(insertedId);
     }
 
     async updatePost(filter, update) {
@@ -86,9 +87,9 @@ module.exports = class Post {
         deleteImages(imagesUrls);
     }
 
-    static async deletePosts(filter) {
+    static async deletePosts(postsIds) {
         const db = getDb();
-        const posts = await this.getPosts(filter)
+        const posts = await this.getPosts({ _id: { $in: postsIds } })
             .project({ imagesUrls: 1, commentsIds: 1, likingUsersIds: 1, bookmarkingUsersIds: 1, _id: 0 });
         const commentsIds = [], likingUsersIds = [], bookmarkingUsersIds = [], imagesUrls = [];
 
