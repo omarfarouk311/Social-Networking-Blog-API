@@ -1,4 +1,5 @@
 const { getDb } = require('../util/database');
+const Post = require('./post');
 
 module.exports = class Comment {
     constructor({ content, creationDate, creatorId, likes, _id, postId }) {
@@ -18,50 +19,39 @@ module.exports = class Comment {
 
     static getComments(filter) {
         const db = getDb();
-        const comments = db.collection('comments').find(filter).limit(10).toArray();
-        lastCommentId = comments[comments.length - 1]['_id'];
-        return { comments, lastCommentId };
+        return db.collection('comments').find(filter);
     }
 
-    deleteComment() {
+    deleteComment(filter, post) {
         const db = getDb();
-        const promises = [];
-        promises.push(db.collection('comments').deleteOne({ _id: this._id }));
-        promises.push(db.collection('posts').updateOne({ _id: this.postId }, { $pull: { commentsIds: this._id } }));
+        const promises = [db.collection('comments').deleteOne(filter), post.removeComment(this._id)];
         return Promise.all(promises);
     }
 
     static async deleteComments(commentsIds) {
         const db = getDb();
         const promises = [];
-        const postsIds = await db.collection('comments').find({ _id: { $in: commentsIds } }).project({ postId: 1, _id: 0 }).toArray();
+        const postsIds = await Comment.getComments({ _id: { $in: commentsIds } })
+            .project({ postId: 1, _id: 0 })
+            .toArray();
         promises.push(db.collection('comments').deleteMany({ _id: { $in: commentsIds } }));
-        promises.push(db.collection('posts').updateMany({ _id: { $in: postsIds } }, { $pull: { commentsIds: this._id } }));
+        promises.push(Post.updatePosts({ _id: { $in: postsIds } }, { $pull: { commentsIds: { $in: commentsIds } } }));
         return Promise.all(promises);
     }
 
-    updateComment() {
+    updateComment(filter, update) {
         const db = getDb();
-        return db.collection('comments').updateOne(
-            { _id: this._id },
-            {
-                $set: {
-                    content: this.content
-                }
-            }
-        );
+        return db.collection('comments').updateOne(filter, update);
+    }
+
+    static updateComments(filter, update) {
+        const db = getDb();
+        return db.collection('comments').updateMany(filter, update);
     }
 
     updateLikes(value) {
-        const db = getDb();
-        return db.collection('comments').updateOne(
-            { _id: this._id },
-            {
-                $inc: {
-                    likes: value
-                }
-            }
-        );
+        const filter = { _id: this._id }, update = { $inc: { likes: value } };
+        return this.updateComment(filter, update);
     }
 
 }
