@@ -11,10 +11,11 @@ module.exports = class Comment {
         this._id = _id;
     }
 
-    async createComment() {
+    async createComment(user) {
         const db = getDb();
         const { insertedId } = await db.collection('comments').insertOne(this);
         this._id = insertedId;
+        return user.addComment(insertedId);
     }
 
     static getComments(filter) {
@@ -42,11 +43,6 @@ module.exports = class Comment {
     updateComment(filter, update) {
         const db = getDb();
         return db.collection('comments').updateOne(filter, update);
-    }
-
-    static updateComments(filter, update) {
-        const db = getDb();
-        return db.collection('comments').updateMany(filter, update);
     }
 
     updateLikes(value) {
