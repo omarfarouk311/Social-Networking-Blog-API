@@ -1,9 +1,11 @@
 const { getDb } = require('../util/database.js');
-const { promises: fsPromises } = require('fs');
 const Comment = require('./comment.js');
+const User = require('./user.js');
+const { deleteImages, updateImages } = require('../util/images.js');
 
 module.exports = class Post {
-    constructor({ _id, title, content, imagesUrls, creatorId, creationDate, tags, commentsIds, likes }) {
+    constructor({ _id, title, content, imagesUrls, creatorId, creationDate, tags, commentsIds, likes, bookmarkingUsersIds,
+        likingUsersIds }) {
         this._id = _id;
         this.title = title;
         this.content = content;
@@ -13,6 +15,8 @@ module.exports = class Post {
         this.tags = tags;
         this.commentsIds = commentsIds;
         this.likes = likes;
+        this.bookmarkingUsersIds = bookmarkingUsersIds;
+        this.likingUsersIds = likingUsersIds;
     }
 
     async createPost() {
@@ -21,111 +25,116 @@ module.exports = class Post {
         this._id = insertedId;
     }
 
-    async updatePost(updates) {
-        const result = await db.collection('posts').findOneAndUpdate(
-            { _id: this._id },
-            { $set: { updates } }
-        );
+    async updatePost(filter, update) {
+        const db = getDb();
+        const post = await db.collection('posts').findOneAndUpdate(filter, update);
+        updateImages(post.imagesUrls, this.imagesUrls);
+        return post;
+    }
 
-        result.imagesUrls.forEach(imageUrl => {
-            if (!this.imagesUrls.some(newImageUrl => newImageUrl === imageUrl)) {
-                fsPromises.unlink(imageUrl).catch(err => console.error(err));
-            }
-        });
+    static updatePosts(filter, update) {
+        const db = getDb();
+        return db.collection('posts').updateMany(filter, update);
     }
 
     static async getPosts(filter) {
         const db = getDb();
-        const posts = await db.collection('posts').find(filter)
-            .limit(10)
-            .project({ content: 0, imagesUrls: 0, commentsIds: 0 })
-            .toArray();
-
-        //join creators
-        await Promise.all(posts.map(async post => {
-            const { creatorId } = post;
-            delete post.creatorId;
-            post.creator = await db.collection('users').findOne({
-                _id: creatorId
-            }).project({ name: 1, imageUrl: 1 });
-        }));
-
-        return posts;
+        return db.collection('posts').find(filter);
     }
 
-    static async getPost(postId) {
-        const post = await db.collection('posts').findOne({
-            _id: postId
-        }).project({ content: 1, imagesUrls: 1, commentsIds: 1 });
+    static joinCreators(posts) {
+        return Promise.all(posts.map(async post => {
+            const { creatorId } = post;
+            delete post.creatorId;
+            User.getUser(creatorId).project({ name: 1, imageUrl: 1 });
+        }));
+    }
 
-        //return early incase of no comments on the post
-        if (!post.commentsIds.length) {
-            post.comments = [];
-            post.lastCommentId = null;
-            delete post.commentsIds;
-            return post;
-        }
+    static getPost(filter) {
+        const db = getDb();
+        return db.collection('posts').findOne(filter);
+    }
 
-        //join comments
-        const filter = { _id: { $in: post.commentsIds } };
-        post.comments = await Comment.getComments(filter);
-        post.lastCommentId = post.commentsIds[post.commentsIds.length - 1];
-        delete post.commentsIds;
+    async joinComments() {
+        const filter = { _id: { $in: this.commentsIds } };
+        this.comments = await Comment.getComments(filter).limit(10).toArray();
+        this.lastCommentId = this.commentsIds[this.commentsIds.length - 1];
+        delete this.commentsIds;
+    }
 
-        //join comments creators
-        await Promise.all(post.comments.map(async comment => {
+    async joinCommentsCreators() {
+        return Promise.all(this.comments.map(async comment => {
             const { creatorId } = comment;
             delete comment.creatorId;
             comment.creator = await db.collection('users').findOne({
                 _id: creatorId
             }).project({ name: 1, imageUrl: 1 });
         }));
-
-        return post;
     }
 
     static countPosts() {
+        const db = getDb();
         return db.collection('posts').countDocuments({});
     }
 
     async deletePost() {
+        const db = getDb();
         const { imagesUrls, commentsIds } = this;
-        const promises = [db.collection('posts').deleteOne({ _id: this._id }), Comment.deleteComments(commentsIds)];
-        await Promise.all([promises]);
-        imagesUrls.forEach(imageUrl => fsPromises.unlink(imageUrl).catch(err => console.error(err)));
+        const promises = [db.collection('posts').deleteOne({ _id: this._id }), Comment.deleteComments(commentsIds),
+        this.removePostFromBookmarks(), this.removePostFromLikedPosts()];
+        await Promise.all(promises);
+        deleteImages(imagesUrls);
     }
 
-    static async deletePosts(postsIds) {
-        const posts = db.collection('posts').find({ _id: { $in: postsIds } });
-        const imagesUrls = [], commentsIds = [];
+    static async deletePosts(filter) {
+        const db = getDb();
+        const posts = await this.getPosts(filter)
+            .project({ imagesUrls: 1, commentsIds: 1, likingUsersIds: 1, bookmarkingUsersIds: 1, _id: 0 });
+        const commentsIds = [], likingUsersIds = [], bookmarkingUsersIds = [], imagesUrls = [];
+
         posts.forEach(post => {
-            imagesUrls.push(...post.imagesUrls);
             commentsIds.push(...post.commentsIds);
+            likingUsersIds.push(...post.likingUsersIds);
+            bookmarkingUsersIds.push(...post.bookmarkingUsersIds);
+            imagesUrls.push(...post.imagesUrls);
         });
 
-        const promises = [db.collection('posts').deleteMany({ _id: { $in: postsIds } }), Comment.deleteComments(commentsIds)];
-        await Promise.all([promises]);
-        imagesUrls.forEach(imageUrl => fsPromises.unlink(imageUrl).catch(err => console.error(err)));
+        const update = {
+            $pull: {
+                likingUsersIds: { $in: likingUsersIds },
+                bookmarkingUsersIds: { $in: bookmarkingUsersIds }
+            }
+        };
+        const promises = [db.collection('posts').deleteMany(filter), Comment.deleteComments(commentsIds),
+        Post.updatePosts(filter, update)];
+
+        await Promise.all(promises);
+        deleteImages(imagesUrls);
     }
 
     updateLikes(value) {
-        const db = getDb();
-        return db.collection('posts').updateOne(
-            { _id: this._id },
-            {
-                $inc: {
-                    likes: value
-                }
-            }
-        );
+        const filter = { _id: this._id }, update = { $inc: { likes: value } };
+        return this.updatePost(filter, update);
     }
 
-    addComment() {
-        const db = getDb();
-        return db.collection('posts').updateOne(
-            { _id: this._id },
-            { $push: { commentsIds: commentId } }
-        );
+    addComment(commentId) {
+        const filter = { _id: this._id }, update = { $push: { commentsIds: commentId } };
+        return this.updatePost(filter, update);
+    }
+
+    removeComment(commentId) {
+        const filter = { _id: this._id }, update = { $pull: { commentsIds: commentId } };
+        return this.updatePost(filter, update);
+    }
+
+    removePostFromBookmarks() {
+        const filter = { _id: { $in: this.bookmarkingUsersIds } }, update = { $pull: { bookmarksIds: this._id } };
+        return User.updateUsers(filter, update);
+    }
+
+    removePostFromLikedPosts() {
+        const filter = { _id: { $in: this.likingUsersIds } }, update = { $pull: { likedPostsIds: this._id } };
+        return User.updateUsers(filter, update);
     }
 
 }
