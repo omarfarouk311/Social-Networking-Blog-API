@@ -1,11 +1,12 @@
 const Post = require('../../models/post');
+const { ObjectId } = require('mongodb');
 
 exports.checkPostExistence = async (req, res, next) => {
     const { postId } = (req.method === 'GET' || req.method === 'DELETE' ? req.params : req.body);
     try {
         let post;
         if (postId.length === 24) {
-            post = await Post.getPost(postId);
+            post = await Post.getPost(ObjectId.createFromHexString(postId));
         }
 
         if (!post) {
