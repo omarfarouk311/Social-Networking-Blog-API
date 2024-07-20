@@ -28,8 +28,10 @@ module.exports = class Post {
 
     async updatePost(filter, update) {
         const db = getDb();
-        const post = await db.collection('posts').findOneAndUpdate(filter, update);
-        updateImages(post.imagesUrls, this.imagesUrls);
+        const post = await db.collection('posts').findOneAndUpdate(filter, update, { returnDocument: 'after' });
+        if (update.imagesUrls) {
+            updateImages(this.imagesUrls, post.imagesUrls);
+        }
         return post;
     }
 
