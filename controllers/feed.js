@@ -1,14 +1,30 @@
 const Post = require('../models/post');
+const { ObjectId } = require('mongodb');
 
 exports.getPosts = async (req, res, next) => {
     try {
-        const { page = 1, itemsPerPage = 3 } = req.query;
-        const promises = [Post.countPosts(), Post.getPosts(page, itemsPerPage)];
+        const { lastId } = req.query;
+        let filter = {};
+        if (lastId) {
+            filter._id = { $gt: ObjectId.createFromHexString(lastId) };
+        }
+
+        const promises = [];
+        promises.push(Post.countPosts());
+        promises.push(Post.getPosts(filter)
+            .limit(10)
+            .project({ content: 0, imagesUrls: 0, commentsIds: 0 })
+            .toArray());
+
         const [totalPosts, posts] = await Promise.all(promises);
+        await Post.joinCreators(posts);
+        const lastPostId = posts[posts.length - 1]._id.toString();
+
         return res.status(200).json({
             message: 'Posts fetched successfully',
-            posts: posts,
-            totalPosts: totalPosts
+            posts,
+            totalPosts,
+            lastPostId
         });
     }
     catch (err) {
@@ -18,33 +34,57 @@ exports.getPosts = async (req, res, next) => {
 
 exports.getPost = async (req, res, next) => {
     const { post } = req;
-    return res.status(200), json({
+
+    //return early incase of no comments on the post
+    if (!post.commentsIds.length) {
+        post.comments = [];
+        post.lastCommentId = null;
+        delete post.commentsIds;
+        return post;
+    }
+
+    await post.joinComments();
+    await post.joinCommentsCreators();
+
+    return res.status(200).json({
         message: 'Post fetched successfully',
-        post: post
+        ...post
     });
 };
 
 exports.createPost = async (req, res, next) => {
+    const { title, content, imagesUrls } = req.body;
+    const { user } = req;
+
     const post = new Post({
-        ...req.body,
-        creator: 'dummyId',
+        title,
+        content,
+        imagesUrls,
+        creatorId: user._id,
         creationDate: new Date(Date.now()).toISOString(),
         tags: [],
-        comments: []
+        commentsIds: [],
+        likes: 0,
+        bookmarkingUsersIds: [],
+        likingUsersIds: []
     });
 
     try {
-        if (!req.file) {
-            const err = new Error('No image provided');
+        if (req.invalidFileType) {
+            const err = new Error('Invalid file type');
             err.statusCode = 422;
             throw err;
         }
-        post.imageUrl = req.file.path;
-        await post.create();
+
+        post.imagesUrls = [];
+        if (req.files) {
+            req.files.forEach(file => post.imagesUrls.push(file.path));
+        }
+        await post.createPost();
 
         return res.status(201).json({
             message: 'Post created successfully!',
-            post: post
+            ...post
         });
     }
     catch (err) {
@@ -55,7 +95,39 @@ exports.createPost = async (req, res, next) => {
 exports.deletePost = async (req, res, next) => {
     const { post } = req;
     try {
-        await post.delete();
+        await post.deletePost();
+        return res.status(204).json({ message: 'Post deleted successfully' });
+    }
+    catch (err) {
+        return next(err);
+    }
+}
+
+exports.updatePost = async (req, res, next) => {
+    try {
+        const { post, body } = req;
+
+        //request to updateLikes
+        if (body.modifyLikes) {
+            await post.updateLikes(body.value);
+            return res.status(200).json({ message: 'Likes updated successfully', Likes: post.likes + body.value });
+        }
+
+        //otherwise, request to update post data
+        if (req.invalidFileType) {
+            const err = new Error('Invalid file type');
+            err.statusCode = 422;
+            throw err;
+        }
+
+        const update = {};
+        if (body.title) update.title = body.title;
+        if (body.content) update.content = body.content;
+        if (body.tags) update.tags = body.tags;
+        if (body.imagesUrls) update.imagesUrls = body.imagesUrls;
+
+        const updatedPost = await post.updatePost(update);
+        return res.status(200).json({ message: 'Post updated successfully', ...updatedPost });
     }
     catch (err) {
         return next(err);
