@@ -13,6 +13,7 @@ router.route('/')
 router.route('/:postId')
     .get(checkPostExistence, feedController.getPost)
     .delete(checkPostExistence, feedController.deletePost)
+    .patch(checkPostExistence, feedController.updatePost)
     .all(notAllowed);
 
 module.exports = router;
