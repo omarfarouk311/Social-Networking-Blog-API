@@ -47,7 +47,7 @@ module.exports = class Post {
         return Promise.all(posts.map(async post => {
             const { creatorId } = post;
             delete post.creatorId;
-            User.getUser(creatorId).project({ name: 1, imageUrl: 1 });
+            post.creator = await User.getUser(creatorId).project({ name: 1, imageUrl: 1 });
         }));
     }
 
