@@ -46,3 +46,14 @@ exports.createComment = async (req, res, next) => {
         return next(err);
     }
 }
+
+exports.deleteComment = async (req, res, next) => {
+    const { user, post, comment } = req;
+    try {
+        await user.deleteComment(comment, post);
+        return res.status(204).json({ message: 'Comment deleted successfully' });
+    }
+    catch (err) {
+        return next(err);
+    }
+}
