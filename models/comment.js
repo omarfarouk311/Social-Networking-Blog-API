@@ -40,7 +40,7 @@ module.exports = class Comment {
 
     updateComment(filter, update) {
         const db = getDb();
-        return db.collection('comments').updateOne(filter, update);
+        return db.collection('comments').findOneAndUpdate(filter, update, { returnDocument: 'after' });
     }
 
     updateLikes(value) {
