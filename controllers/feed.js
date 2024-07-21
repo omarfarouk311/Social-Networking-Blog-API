@@ -104,11 +104,11 @@ exports.deletePost = async (req, res, next) => {
 
 exports.updatePost = async (req, res, next) => {
     try {
-        const { post, body } = req;
+        const { user, post, body } = req;
 
         //request to updateLikes
         if (body.modifyLikes) {
-            let = updatedPost;
+            let updatedPost;
             if (body.value === 1) updatedPost = await user.likePost(post)[1];
             else updatedPost = await user.unlikePost(post)[1];
 
