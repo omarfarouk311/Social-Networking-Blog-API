@@ -11,11 +11,10 @@ module.exports = class Comment {
         this._id = _id;
     }
 
-    async createComment(user) {
+    async createComment() {
         const db = getDb();
         const { insertedId } = await db.collection('comments').insertOne(this);
         this._id = insertedId;
-        return user.addComment(insertedId);
     }
 
     static getComments(filter) {
@@ -23,10 +22,9 @@ module.exports = class Comment {
         return db.collection('comments').find(filter);
     }
 
-    deleteComment(filter, post) {
+    deleteComment(filter) {
         const db = getDb();
-        const promises = [db.collection('comments').deleteOne(filter), post.removeComment(this._id)];
-        return Promise.all(promises);
+        return db.collection('comments').deleteOne(filter);
     }
 
     static async deleteComments(commentsIds) {

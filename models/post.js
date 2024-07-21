@@ -19,20 +19,19 @@ module.exports = class Post {
         this.likingUsersIds = likingUsersIds;
     }
 
-    async createPost(user) {
+    async createPost() {
         const db = getDb();
         const { insertedId } = await db.collection('posts').insertOne(this);
         this._id = insertedId;
-        return user.createPost(insertedId);
     }
 
     async updatePost(filter, update) {
         const db = getDb();
-        const post = await db.collection('posts').findOneAndUpdate(filter, update, { returnDocument: 'after' });
+        const updatedPost = await db.collection('posts').findOneAndUpdate(filter, update, { returnDocument: 'after' });
         if (update.imagesUrls) {
-            updateImages(this.imagesUrls, post.imagesUrls);
+            updateImages(this.imagesUrls, updatedPost.imagesUrls);
         }
-        return post;
+        return updatedPost;
     }
 
     static updatePosts(filter, update) {
@@ -61,7 +60,7 @@ module.exports = class Post {
     async joinComments() {
         const filter = { _id: { $in: this.commentsIds } };
         this.comments = await Comment.getComments(filter).limit(10).toArray();
-        this.lastCommentId = this.commentsIds[this.commentsIds.length - 1];
+        this.lastCommentId = this.comments[this.comments.length - 1]['_id'].toString();
         delete this.commentsIds;
     }
 
@@ -125,8 +124,18 @@ module.exports = class Post {
         return this.updatePost(filter, update);
     }
 
-    removeComment(commentId) {
+    deleteComment(commentId) {
         const filter = { _id: this._id }, update = { $pull: { commentsIds: commentId } };
+        return this.updatePost(filter, update);
+    }
+
+    addBookmark(userId) {
+        const filter = { _id: this._id }, update = { $push: { bookmarkingUsersIds: userId } };
+        return this.updatePost(filter, update);
+    }
+
+    removeBookmark(userId) {
+        const filter = { _id: this._id }, update = { $pull: { bookmarkingUsersIds: userId } };
         return this.updatePost(filter, update);
     }
 
