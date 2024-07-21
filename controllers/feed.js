@@ -55,7 +55,6 @@ exports.getPost = async (req, res, next) => {
 exports.createPost = async (req, res, next) => {
     const { title, content, imagesUrls } = req.body;
     const { user } = req;
-
     const post = new Post({
         title,
         content,
@@ -80,7 +79,7 @@ exports.createPost = async (req, res, next) => {
         if (req.files) {
             req.files.forEach(file => post.imagesUrls.push(file.path));
         }
-        await post.createPost();
+        await user.createPost(post);
 
         return res.status(201).json({
             message: 'Post created successfully!',
@@ -93,9 +92,9 @@ exports.createPost = async (req, res, next) => {
 };
 
 exports.deletePost = async (req, res, next) => {
-    const { post } = req;
+    const { post, user } = req;
     try {
-        await post.deletePost();
+        await user.deletePost(post);
         return res.status(204).json({ message: 'Post deleted successfully' });
     }
     catch (err) {
@@ -109,8 +108,14 @@ exports.updatePost = async (req, res, next) => {
 
         //request to updateLikes
         if (body.modifyLikes) {
-            await post.updateLikes(body.value);
-            return res.status(200).json({ message: 'Likes updated successfully', Likes: post.likes + body.value });
+            let = updatedPost;
+            if (body.value === 1) updatedPost = await user.likePost(post)[1];
+            else updatedPost = await user.unlikePost(post)[1];
+
+            return res.status(200).json({
+                message: 'Likes updated successfully',
+                ...updatedPost
+            });
         }
 
         //otherwise, request to update post data
@@ -126,8 +131,11 @@ exports.updatePost = async (req, res, next) => {
         if (body.tags) update.tags = body.tags;
         if (body.imagesUrls) update.imagesUrls = body.imagesUrls;
 
-        const updatedPost = await post.updatePost(update);
-        return res.status(200).json({ message: 'Post updated successfully', ...updatedPost });
+        const updatedPost = await post.updatePost({ _id: post._id }, update);
+        return res.status(200).json({
+            message: 'Post updated successfully',
+            ...updatedPost
+        });
     }
     catch (err) {
         return next(err);
