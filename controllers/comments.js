@@ -24,3 +24,25 @@ exports.getComments = async (req, res, next) => {
         return next(err);
     }
 }
+
+exports.createComment = async (req, res, next) => {
+    const { content } = req.body, { user, post } = req;
+    const comment = new Comment({
+        content,
+        creationDate: new Date(Date.now()).toISOString(),
+        creatorId: user._id,
+        likes: 0,
+        postId
+    });
+
+    try {
+        await user.addComment(comment, post);
+        return res.status(201).json({
+            message: 'Comment created successfully',
+            ...comment
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
+}
