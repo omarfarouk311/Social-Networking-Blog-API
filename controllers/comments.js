@@ -57,3 +57,32 @@ exports.deleteComment = async (req, res, next) => {
         return next(err);
     }
 }
+
+exports.updateComment = async (req, res, next) => {
+    const { body, user, comment } = req;
+
+    try {
+        //request to updateLikes
+        if (body.modifyLikes) {
+            let updatedComment;
+            if (body.value === 1) updatedComment = await user.likeComment(comment);
+            else updatedComment = await user.unlikeComment(comment);
+
+            return res.status(200).json({
+                message: 'Likes updated successfully',
+                ...updatedComment
+            });
+        }
+
+        //otherwise, request to update comment data
+        const update = { content: body.content };
+        const updatedComment = await comment.updateComment({ _id: comment._id }, update);
+        return res.status(200).json({
+            message: 'Post updated successfully',
+            ...updatedComment
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
+}
