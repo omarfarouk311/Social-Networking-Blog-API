@@ -22,4 +22,9 @@ router.route('/:postId/comments')
     .post(commentsController.createComment)
     .all(notAllowed);
 
+router.route('/:postId/:commentId')
+    .delete(commentsController.deleteComment)
+    .patch(commentsController.updateComment)
+    .all(notAllowed);
+
 module.exports = router;
