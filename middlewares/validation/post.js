@@ -45,3 +45,11 @@ exports.validatePostCreation = [
     ,
     checkExact([], { message: 'Request structure is invalid because too many fields are passed', locations: ['body', 'query'] })
 ];
+
+exports.handleValidationErrors = (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return next(errors.array());
+    }
+    next();
+}
