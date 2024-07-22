@@ -22,6 +22,11 @@ module.exports = class Comment {
         return db.collection('comments').find(filter);
     }
 
+    static getComment(filter) {
+        const db = getDb();
+        return db.collection('comments').findOne(filter);
+    }
+
     deleteComment(filter) {
         const db = getDb();
         return db.collection('comments').deleteOne(filter);
