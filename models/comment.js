@@ -1,20 +1,41 @@
 const { getDb } = require('../util/database');
-const Post = require('./post');
+const User = require('./user');
 
 module.exports = class Comment {
-    constructor({ content, creationDate, creatorId, likes, _id, postId }) {
+    constructor({ content, creationDate, creatorId, likes, _id, postId, parentId, repliesCount, likingUsersIds }) {
         this.content = content;
         this.creationDate = creationDate;
         this.creatorId = creatorId;
         this.postId = postId;
         this.likes = likes;
         this._id = _id;
+        this.parentId = parentId;
+        this.repliesCount = repliesCount;
+        this.likingUsersIds = likingUsersIds;
     }
 
-    async createComment() {
+    async createComment(post) {
         const db = getDb();
-        const { insertedId } = await db.collection('comments').insertOne(this);
+        const promises = [];
+
+        promises.push(db.collection('comments').insertOne(this));
+        promises.push(post.updatePost({ _id: post._id }, { $inc: { commentsCount: 1 } }));
+        if (this.parentId) {
+            promises.push(this.updateComment({ _id: this.parentId }, { $inc: { repliesCount: 1 } }));
+        }
+
+        const { insertedId } = await Promise.all([promises])[0];
         this._id = insertedId;
+    }
+
+    updateComment(filter, update) {
+        const db = getDb();
+        return db.collection('comments').findOneAndUpdate(filter, update, { returnDocument: 'after' });
+    }
+
+    static updateComments(filter, update) {
+        const db = getDb();
+        return db.collection('comments').updateMany(filter, update);
     }
 
     static getComments(filter) {
@@ -27,30 +48,52 @@ module.exports = class Comment {
         return db.collection('comments').findOne(filter);
     }
 
-    deleteComment(filter) {
-        const db = getDb();
-        return db.collection('comments').deleteOne(filter);
-    }
-
-    static async deleteComments(commentsIds) {
+    deleteComment(filter, post) {
         const db = getDb();
         const promises = [];
-        const postsIds = await Comment.getComments({ _id: { $in: commentsIds } })
-            .project({ postId: 1, _id: 0 })
-            .toArray();
-        promises.push(db.collection('comments').deleteMany({ _id: { $in: commentsIds } }));
-        promises.push(Post.updatePosts({ _id: { $in: postsIds } }, { $pull: { commentsIds: { $in: commentsIds } } }));
+
+        promises.push(db.collection('comments').deleteOne(filter));
+        promises.push(this.removeCommentFromLikedComments());
+        promises.push(post.updatePost({ _id: post._id }, { $inc: { commentsCount: -1 } }));
+        if (this.parentId) {
+            promises.push(this.updateComment({ _id: this.parentId }, { $inc: { repliesCount: -1 } }));
+        }
+
         return Promise.all(promises);
     }
 
-    updateComment(filter, update) {
+    static async deleteComments(filter) {
         const db = getDb();
-        return db.collection('comments').findOneAndUpdate(filter, update, { returnDocument: 'after' });
+        const comments = Comment.getComments(filter).project({ likingUsersIds: 1 });
+        const likingUsersIds = [], commentsIds = [];
+
+        comments.forEach(comment => {
+            likingUsersIds.push(...comment.likingUsersIds);
+            commentsIds.push(comment._id)
+        });
+
+        return Promise.all([db.collection('comments').deleteMany(filter),
+        Comment.removeCommentsFromLikedComments(likingUsersIds, comments)]);
     }
 
-    updateLikes(value) {
-        const filter = { _id: this._id }, update = { $inc: { likes: value } };
+    addLike(userId) {
+        const filter = { _id: this._id }, update = { $inc: { likes: 1 }, $push: { likingUsersIds: userId } };
         return this.updateComment(filter, update);
+    }
+
+    removeLike(userId) {
+        const filter = { _id: this._id }, update = { $inc: { likes: -1 }, $pull: { likingUsersIds: userId } };
+        return this.updateComment(filter, update);
+    }
+
+    removeCommentFromLikedComments() {
+        const filter = { _id: { $in: likingUsersIds } }, update = { $pull: { likedCommentsIds: this._id } };
+        return User.updateUsers(filter, update);
+    }
+
+    static removeCommentsFromLikedComments(likingUsersIds, commentsIds) {
+        const filter = { _id: { $in: likingUsersIds } }, update = { $pull: { likedCommentsIds: { $in: commentsIds } } };
+        return User.updateUsers(filter, update);
     }
 
 }

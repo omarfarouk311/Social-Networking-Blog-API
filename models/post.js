@@ -4,8 +4,8 @@ const User = require('./user.js');
 const { deleteImages, updateImages } = require('../util/images.js');
 
 module.exports = class Post {
-    constructor({ _id, title, content, imagesUrls, creatorId, creationDate, tags, commentsIds, likes, bookmarkingUsersIds,
-        likingUsersIds }) {
+    constructor({ _id, title, content, imagesUrls, creatorId, creationDate, tags, likes, bookmarkingUsersIds, likingUsersIds,
+        commentsCount }) {
         this._id = _id;
         this.title = title;
         this.content = content;
@@ -13,10 +13,10 @@ module.exports = class Post {
         this.creatorId = creatorId;
         this.creationDate = creationDate;
         this.tags = tags;
-        this.commentsIds = commentsIds;
         this.likes = likes;
         this.bookmarkingUsersIds = bookmarkingUsersIds;
         this.likingUsersIds = likingUsersIds;
+        this.commentsCount = commentsCount;
     }
 
     async createPost() {
@@ -47,8 +47,7 @@ module.exports = class Post {
     static joinCreators(posts) {
         return Promise.all(posts.map(async post => {
             const { creatorId } = post;
-            delete post.creatorId;
-            post.creator = await User.getUser(creatorId).project({ name: 1, imageUrl: 1 });
+            post.creator = await User.getUser({ _id: creatorId }).project({ name: 1, imageUrl: 1, _id: 0 });
         }));
     }
 
@@ -58,74 +57,52 @@ module.exports = class Post {
     }
 
     async joinComments() {
-        const filter = { _id: { $in: this.commentsIds } };
-        this.comments = await Comment.getComments(filter).limit(10).toArray();
+        this.comments = await Comment.getComments({ postId: this._id }).sort({ _id: -1 }).limit(10).toArray();
         this.lastCommentId = this.comments[this.comments.length - 1]['_id'].toString();
-        delete this.commentsIds;
     }
 
     async joinCommentsCreators() {
         return Promise.all(this.comments.map(async comment => {
             const { creatorId } = comment;
-            delete comment.creatorId;
-            comment.creator = await db.collection('users').findOne({
-                _id: creatorId
-            }).project({ name: 1, imageUrl: 1 });
+            comment.creator = await User.getUser({ _id: creatorId }).project({ name: 1, imageUrl: 1, _id: 0 });
         }));
     }
 
-    static countPosts() {
+    async deletePost(filter) {
         const db = getDb();
-        return db.collection('posts').countDocuments({});
-    }
+        const { imagesUrls } = this, commentsFilter = { postId: this._id };
 
-    async deletePost() {
-        const db = getDb();
-        const { imagesUrls, commentsIds } = this;
-        const promises = [db.collection('posts').deleteOne({ _id: this._id }), Comment.deleteComments(commentsIds),
+        const promises = [db.collection('posts').deleteOne(filter), Comment.deleteComments(commentsFilter),
         this.removePostFromBookmarks(), this.removePostFromLikedPosts()];
         await Promise.all(promises);
         deleteImages(imagesUrls);
     }
 
-    static async deletePosts(postsIds) {
+    static async deletePosts(filter) {
         const db = getDb();
-        const posts = await this.getPosts({ _id: { $in: postsIds } })
-            .project({ imagesUrls: 1, commentsIds: 1, likingUsersIds: 1, bookmarkingUsersIds: 1, _id: 0 });
-        const commentsIds = [], likingUsersIds = [], bookmarkingUsersIds = [], imagesUrls = [];
+        const posts = await this.getPosts(filter).project({ imagesUrls: 1, likingUsersIds: 1, bookmarkingUsersIds: 1 });
+        const likingUsersIds = [], bookmarkingUsersIds = [], imagesUrls = [], postsIds = [];
 
         posts.forEach(post => {
-            commentsIds.push(...post.commentsIds);
             likingUsersIds.push(...post.likingUsersIds);
             bookmarkingUsersIds.push(...post.bookmarkingUsersIds);
             imagesUrls.push(...post.imagesUrls);
+            postsIds.push(post._id);
         });
 
-        const update = {
-            $pull: {
-                likingUsersIds: { $in: likingUsersIds },
-                bookmarkingUsersIds: { $in: bookmarkingUsersIds }
-            }
-        };
-        const promises = [db.collection('posts').deleteMany(filter), Comment.deleteComments(commentsIds),
-        Post.updatePosts(filter, update)];
-
+        const promises = [db.collection('posts').deleteMany(filter), Comment.deleteComments({ postId: { $in: postsIds } }),
+        Post.removePostsFromBookmarks(bookmarkingUsersIds, postsIds), Post.removePostsFromLikedPosts(likingUsersIds, postsIds)];
         await Promise.all(promises);
         deleteImages(imagesUrls);
     }
 
-    updateLikes(value) {
-        const filter = { _id: this._id }, update = { $inc: { likes: value } };
+    addLike(userId) {
+        const filter = { _id: this._id }, update = { $inc: { likes: 1 }, $push: { likingUsersIds: userId } };
         return this.updatePost(filter, update);
     }
 
-    addComment(commentId) {
-        const filter = { _id: this._id }, update = { $push: { commentsIds: commentId } };
-        return this.updatePost(filter, update);
-    }
-
-    deleteComment(commentId) {
-        const filter = { _id: this._id }, update = { $pull: { commentsIds: commentId } };
+    removeLike(userId) {
+        const filter = { _id: this._id }, update = { $inc: { likes: -1 }, $pull: { likingUsersIds: userId } };
         return this.updatePost(filter, update);
     }
 
@@ -146,6 +123,16 @@ module.exports = class Post {
 
     removePostFromLikedPosts() {
         const filter = { _id: { $in: this.likingUsersIds } }, update = { $pull: { likedPostsIds: this._id } };
+        return User.updateUsers(filter, update);
+    }
+
+    static removePostsFromBookmarks(bookmarkingUsersIds, postsIds) {
+        const filter = { _id: { $in: bookmarkingUsersIds } }, update = { $pull: { bookmarksIds: { $in: postsIds } } };
+        return User.updateUsers(filter, update);
+    }
+
+    static removePostsFromLikedPosts(likingUsersIds, postsIds) {
+        const filter = { _id: { $in: likingUsersIds } }, update = { $pull: { likedPostsIds: { $in: postsIds } } };
         return User.updateUsers(filter, update);
     }
 

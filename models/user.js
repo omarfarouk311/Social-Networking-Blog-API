@@ -4,8 +4,8 @@ const Comment = require('./comment');
 const { promises: fsPromises } = require('fs');
 
 module.exports = class User {
-    constructor({ _id, email, password, name, imageUrl, followingIds, followersIds, bookmarksIds, postsIds,
-        commentsIds, likedPostsIds, bio, location }) {
+    constructor({ _id, email, password, name, imageUrl, followingIds, followersIds, bookmarksIds, likedPostsIds, bio, location,
+        creationDate }) {
         this._id = _id;
         this.email = email;
         this.password = password;
@@ -16,9 +16,9 @@ module.exports = class User {
         this.followingIds = followingIds;
         this.followersIds = followersIds;
         this.bookmarksIds = bookmarksIds;
-        this.postsIds = postsIds;
-        this.commentsIds = commentsIds;
         this.likedPostsIds = likedPostsIds;
+        this.likedCommentsIds = likedCommentsIds;
+        this.creationDate = creationDate;
     }
 
     async createUser() {
@@ -29,7 +29,8 @@ module.exports = class User {
 
     updateUser(filter, update) {
         const db = getDb();
-        const updatedUser = db.collection('users').findOneAndUpdate(filter, update, { returnDocument: 'after' });
+        const updatedUser = db.collection('users').findOneAndUpdate(filter, update, { returnDocument: 'after' })
+            .project({ password: 0 });
         if (update.imageUrl) {
             updateImages([this.imageUrl], [updatedUser.imageUrl]);
         }
@@ -46,15 +47,20 @@ module.exports = class User {
         const { imageUrl } = this;
         const promises = [];
 
-        promises.push(Post.deletePosts(this.postsIds));
-        promises.push(Comment.deleteComments(this.commentsIds));
+        promises.push(Post.deletePosts({ creatorId: this._id }));
         promises.push(Post.updatePosts({ _id: { $in: this.likedPostsIds } }, { $inc: { likes: -1 } }));
+        promises.push(Comment.deleteComments({ creatorId: this._id }));
+        promises.push(Comment.updateComments({ _id: { $in: this.likedCommentsIds } }, { $inc: { likes: -1 } }));
         promises.push(User.updateUsers({ _id: { $in: this.followersIds } }, { $pull: { followingIds: this._id } }));
         promises.push(User.updateUsers({ _id: { $in: this.followingIds } }, { $pull: { followersIds: this._id } }));
         promises.push(db.collection('users').deleteOne({ _id: this._id }));
         await Promise.all(promises);
 
         fsPromises.unlink(imageUrl).catch(err => console.error(err));
+    }
+
+    static getUser(filter) {
+        return db.collection('users').findOne(filter);
     }
 
     static async getUserInfo(userId) {
@@ -75,9 +81,7 @@ module.exports = class User {
                 $project: {
                     password: 0,
                     bookmarksIds: 0,
-                    commentsIds: 0,
                     email: 0,
-                    postsIds: { $slice: [0, 10] },
                     followersIds: { $slice: [0, 20] },
                     followingIds: { $slice: [0, 20] },
                     likedPostsIds: { $slice: [0, 10] }
@@ -85,18 +89,14 @@ module.exports = class User {
             }
         ]);
 
-        user.posts = await Post.getPosts({ _id: { $in: user.postsIds } })
+        user.posts = await Post.getPosts({ creatorId: this._id })
+            .sort({ _id: -1 })
             .limit(10)
-            .project({ content: 0, imagesUrls: 0, commentsIds: 0, creatorId: 0 })
+            .project({ content: 0, imagesUrls: 0, creatorId: 0 })
             .toArray();
-        user.lastPostId = user.postsIds[user.postsIds.length - 1];
-        delete user.postsIds;
+        user.lastPostId = user.posts[user.posts.length - 1]['_id'].toString();
 
         return user;
-    }
-
-    static getUser(userId) {
-        return db.collection('users').findOne({ _id: userId });
     }
 
     updateFollowers(followedId, type) {
@@ -122,45 +122,24 @@ module.exports = class User {
         return Promise.all([this.updateUser(filter, update), post.removeBookmark(this._id)]);
     }
 
-    async createPost(post) {
-        await post.createPost()
-        const filter = { _id: this._id }, update = { $push: { postsIds: post._id } };
-        return this.updateUser(filter, update);
-    }
-
-    deletePost(post) {
-        const filter = { _id: this._id }, update = { $pull: { postsIds: post._id } };
-        return Promise.all([this.updateUser(filter, update), post.deletePost()]);
-    }
-
     likePost(post) {
         const filter = { _id: this._id }, update = { $push: { likedPostsIds: post._id } };
-        return Promise.all([this.updateUser(filter, update), post.updateLikes(1)]);
+        return Promise.all([this.updateUser(filter, update), post.addLike(this._id)]);
     }
 
     unlikePost(post) {
         const filter = { _id: this._id }, update = { $pull: { likedPostsIds: post._id } };
-        return Promise.all([this.updateUser(filter, update), post.updateLikes(-1)]);
-    }
-
-    async addComment(comment, post) {
-        await comment.createComment();
-        const filter = { _id: this._id }, update = { $push: { commentsIds: comment._id } };
-        return Promise.all([this.updateUser(filter, update), post.addComment(comment._id)]);
-    }
-
-    async deleteComment(comment, post) {
-        const filter = { _id: this._id }, update = { $pull: { commentsIds: comment._id } };
-        return Promise.all([this.updateUser(filter, update), post.deleteComment(comment._id),
-        comment.deleteComment({ _id: comment._id })]);
+        return Promise.all([this.updateUser(filter, update), post.removeLike(this._id)]);
     }
 
     likeComment(comment) {
-        return comment.updateLikes(1);
+        const filter = { _id: this._id }, update = { $push: { likedCommentsIds: comment._id } };
+        return Promise.all([this.updateUser(filter, update), comment.addLike(this._id)]);
     }
 
     unlikeComment(comment) {
-        return comment.updateLikes(-1);
+        const filter = { _id: this._id }, update = { $pull: { likedCommentsIds: comment._id } };
+        return Promise.all([this.updateUser(filter, update), comment.removeLike(this._id)]);
     }
 
 }
