@@ -142,4 +142,18 @@ module.exports = class User {
         return Promise.all([this.updateUser(filter, update), comment.removeLike(this._id)]);
     }
 
+    static joinCreators(posts) {
+        return Promise.all(posts.map(async post => {
+            const { creatorId } = post;
+            post.creator = await User.getUser({ _id: creatorId }).project({ name: 1, imageUrl: 1, _id: 0 });
+        }));
+    }
+
+    static async joinCommentsCreators(comments) {
+        return Promise.all(comments.map(async comment => {
+            const { creatorId } = comment;
+            comment.creator = await User.getUser({ _id: creatorId }).project({ name: 1, imageUrl: 1, _id: 0 });
+        }));
+    }
+
 }

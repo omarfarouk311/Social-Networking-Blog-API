@@ -44,28 +44,9 @@ module.exports = class Post {
         return db.collection('posts').find(filter);
     }
 
-    static joinCreators(posts) {
-        return Promise.all(posts.map(async post => {
-            const { creatorId } = post;
-            post.creator = await User.getUser({ _id: creatorId }).project({ name: 1, imageUrl: 1, _id: 0 });
-        }));
-    }
-
     static getPost(filter) {
         const db = getDb();
         return db.collection('posts').findOne(filter);
-    }
-
-    async joinComments() {
-        this.comments = await Comment.getComments({ postId: this._id }).sort({ _id: -1 }).limit(10).toArray();
-        this.lastCommentId = this.comments[this.comments.length - 1]['_id'].toString();
-    }
-
-    async joinCommentsCreators() {
-        return Promise.all(this.comments.map(async comment => {
-            const { creatorId } = comment;
-            comment.creator = await User.getUser({ _id: creatorId }).project({ name: 1, imageUrl: 1, _id: 0 });
-        }));
     }
 
     async deletePost(filter) {
