@@ -1,4 +1,6 @@
 const Post = require('../models/post');
+const User = require('../models/user');
+const Comment = require('../models/comment');
 
 exports.getPosts = async (req, res, next) => {
     try {
@@ -14,7 +16,7 @@ exports.getPosts = async (req, res, next) => {
             .project({ content: 0, imagesUrls: 0 })
             .toArray();
 
-        await Post.joinCreators(posts);
+        await User.joinCreators(posts);
         const lastPostId = posts[posts.length - 1]['_id'].toString();
 
         return res.status(200).json({
@@ -31,8 +33,8 @@ exports.getPosts = async (req, res, next) => {
 exports.getPost = async (req, res, next) => {
     const { post } = req;
 
-    await post.joinComments();
-    await post.joinCommentsCreators();
+    await Comment.joinComments(post);
+    await User.joinCommentsCreators(post.comments);
 
     return res.status(200).json({
         message: 'Post fetched successfully',
