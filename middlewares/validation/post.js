@@ -47,16 +47,6 @@ exports.validatePostCreation = [
 ];
 
 exports.validatePostUpdating = [
-    body('modifyLikes')
-        .optional()
-        .isBoolean()
-        .withMessage("modifyLikes value must be a boolean value")
-    ,
-    body('value')
-        .optional()
-        .isInt({ allow_leading_zeroes: false, max: 1, min: -1 })
-        .withMessage('value must be 1 or -1')
-    ,
     body('title')
         .optional()
         .trim()
@@ -86,6 +76,18 @@ exports.validatePostUpdating = [
         .optional()
         .isString()
         .withMessage("Tags value must be a string")
+    ,
+    checkExact([], { message: 'Request structure is invalid because too many fields are passed', locations: ['body', 'query'] })
+];
+
+exports.validateLikesUpdating = [
+    body('modifyLikes')
+        .isBoolean()
+        .withMessage("modifyLikes value must be a boolean value")
+    ,
+    body('value')
+        .isInt({ allow_leading_zeroes: false, max: 1, min: -1 })
+        .withMessage('value must be 1 or -1')
     ,
     checkExact([], { message: 'Request structure is invalid because too many fields are passed', locations: ['body', 'query'] })
 ];
