@@ -16,8 +16,11 @@ exports.getPosts = async (req, res, next) => {
             .project({ content: 0, imagesUrls: 0 })
             .toArray();
 
-        await User.joinCreators(posts);
-        const lastPostId = posts[posts.length - 1]['_id'].toString();
+        let lastPostId = null;
+        if (posts.length) {
+            await User.joinCreators(posts);
+            lastPostId = posts[posts.length - 1]['_id'].toString();
+        }
 
         return res.status(200).json({
             message: 'Posts fetched successfully',
@@ -68,7 +71,7 @@ exports.createPost = async (req, res, next) => {
         if (req.files) {
             req.files.forEach(file => post.imagesUrls.push(file.path));
         }
-        await user.createPost(post);
+        await post.createPost();
 
         return res.status(201).json({
             message: 'Post created successfully!',
@@ -89,31 +92,15 @@ exports.deletePost = async (req, res, next) => {
     catch (err) {
         return next(err);
     }
-}
-
-exports.updateLikes = async (req, res, next) => {
-    const { user, post, body } = req;
-
-    if (body.modifyLikes) {
-        let updatedPost;
-        if (body.value === 1) updatedPost = await user.likePost(post)[1];
-        else updatedPost = await user.unlikePost(post)[1];
-
-        return res.status(200).json({
-            message: 'Likes updated successfully',
-            ...updatedPost
-        });
-    }
-}
+};
 
 exports.updatePost = async (req, res, next) => {
+    const { post, body } = req;
+    if (!Object.keys(body).length) {
+        return res.status(400).json({ message: 'Bad request' });
+    }
+
     try {
-        const { post, body } = req;
-
-        if (!Object.keys(body).length) {
-            return res.status(400).json({ message: 'Bad request' });
-        }
-
         if (req.invalidFileType) {
             const err = new Error('Invalid file type');
             err.statusCode = 422;
@@ -134,4 +121,4 @@ exports.updatePost = async (req, res, next) => {
     catch (err) {
         return next(err);
     }
-}
+};
