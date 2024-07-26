@@ -1,18 +1,24 @@
-const { ObjectId } = require('mongodb');
 const Comment = require('../models/comment');
+const User = require('../models/user');
 
 exports.getComments = async (req, res, next) => {
     try {
-        const { lastId } = req.query;
-        let filter = {};
+        const { lastId } = req.query, { post } = req;
+        let filter = { postId: post._id };
         if (lastId) {
-            filter._id = { $gt: ObjectId.createFromHexString(lastId) };
+            filter._id = { $lt: lastId };
         }
 
         const comments = await Comment.getComments(filter)
+            .sort({ _id: -1 })
             .limit(10)
             .toArray();
-        const lastCommentId = comments[comments.length - 1]['_id'].toString();
+
+        let lastCommentId = null;
+        if (comments.length) {
+            await User.joinCommentsCreators(comments);
+            lastCommentId = comments[comments.length - 1]['_id'].toString();
+        }
 
         return res.status(200).json({
             message: 'Comments fetched successfully',
@@ -23,20 +29,23 @@ exports.getComments = async (req, res, next) => {
     catch (err) {
         return next(err);
     }
-}
+};
 
 exports.createComment = async (req, res, next) => {
-    const { content } = req.body, { user, post } = req;
+    const { content, parentId } = req.body, { user, post } = req;
     const comment = new Comment({
         content,
         creationDate: new Date(Date.now()).toISOString(),
         creatorId: user._id,
+        postId: post._id,
         likes: 0,
-        postId
+        parentId,
+        repliesCount: 0,
+        likingUsersIds: []
     });
 
     try {
-        await user.addComment(comment, post);
+        await comment.createComment(post);
         return res.status(201).json({
             message: 'Comment created successfully',
             ...comment
@@ -45,38 +54,27 @@ exports.createComment = async (req, res, next) => {
     catch (err) {
         return next(err);
     }
-}
+};
 
 exports.deleteComment = async (req, res, next) => {
-    const { user, post, comment } = req;
+    const { post, comment } = req;
     try {
-        await user.deleteComment(comment, post);
+        await comment.deleteComment({ _id: comment._id }, post);
         return res.status(204).json({ message: 'Comment deleted successfully' });
     }
     catch (err) {
         return next(err);
     }
-}
+};
 
 exports.updateComment = async (req, res, next) => {
-    const { body, user, comment } = req;
+    const { body, comment } = req;
+    if (!Object.keys(body).length) {
+        return res.status(400).json({ message: 'Bad request' });
+    }
 
     try {
-        //request to updateLikes
-        if (body.modifyLikes) {
-            let updatedComment;
-            if (body.value === 1) updatedComment = await user.likeComment(comment);
-            else updatedComment = await user.unlikeComment(comment);
-
-            return res.status(200).json({
-                message: 'Likes updated successfully',
-                ...updatedComment
-            });
-        }
-
-        //otherwise, request to update comment data
-        const update = { content: body.content };
-        const updatedComment = await comment.updateComment({ _id: comment._id }, update);
+        const updatedComment = await comment.updateComment({ _id: comment._id }, body);
         return res.status(200).json({
             message: 'Post updated successfully',
             ...updatedComment
@@ -85,4 +83,4 @@ exports.updateComment = async (req, res, next) => {
     catch (err) {
         return next(err);
     }
-}
+};
