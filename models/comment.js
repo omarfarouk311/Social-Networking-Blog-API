@@ -98,7 +98,7 @@ module.exports = class Comment {
 
     static async joinComments(post) {
         post.comments = await Comment.getComments({ postId: post._id }).sort({ _id: -1 }).limit(10).toArray();
-        post.lastCommentId = post.comments[post.comments.length - 1]['_id'].toString();
+        post.lastCommentId = post.comment.length ? post.comments[post.comments.length - 1]['_id'].toString() : null;
     }
 
 }

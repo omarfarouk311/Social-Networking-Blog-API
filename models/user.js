@@ -60,6 +60,7 @@ module.exports = class User {
     }
 
     static getUser(filter) {
+        const db = getDb();
         return db.collection('users').findOne(filter);
     }
 
