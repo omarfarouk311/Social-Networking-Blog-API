@@ -5,6 +5,7 @@ const { mongoConnect } = require('./util/database');
 const { join } = require('path');
 const { notFound, errorHandlingMiddleware } = require('./middlewares/errors');
 const feedRouter = require('./routes/feed');
+const bookmarksRouter = require('./routes/bookmarks');
 
 const app = express();
 
@@ -17,7 +18,9 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-app.use('/feed', feedRouter)
+app.use('/feed', feedRouter);
+
+app.use('/bookmarks', bookmarksRouter);
 
 app.use(notFound);
 
