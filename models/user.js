@@ -123,6 +123,10 @@ module.exports = class User {
         return Promise.all([this.updateUser(filter, update), post.removeBookmark(this._id)]);
     }
 
+    getBookmarks(filter) {
+        return Post.getPosts(filter);
+    }
+
     likePost(post) {
         const filter = { _id: this._id }, update = { $push: { likedPostsIds: post._id } };
         return Promise.all([this.updateUser(filter, update), post.addLike(this._id)]);
