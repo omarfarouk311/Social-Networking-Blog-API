@@ -64,12 +64,12 @@ module.exports = class User {
         return db.collection('users').findOne(filter);
     }
 
-    static async getUserInfo(userId) {
+    async getUserInfo() {
         const db = getDb();
         const result = await db.collection('users').aggregate([
             {
                 $match: {
-                    _id: userId
+                    _id: this._id
                 }
             },
             {

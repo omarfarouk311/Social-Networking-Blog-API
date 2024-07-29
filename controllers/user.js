@@ -97,7 +97,42 @@ exports.getUserLikes = async (req, res, next) => {
     try {
         const result = await getFilteredPosts(filter);
         return res.status(200).json({
+            message: 'User liked posts fetched successfully',
             ...result
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
+};
+
+exports.getUserPosts = async (req, res, next) => {
+    const { user } = req, { lastId } = req.query;
+    const filter = { creatorId: user._id };
+    if (lastId) {
+        filter._id.$lt = lastId;
+    }
+
+    try {
+        const result = await getFilteredPosts(filter);
+        return res.status(200).json({
+            message: 'User posts fetched successfully',
+            ...result
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
+};
+
+exports.getUserProfile = async (req, res, next) => {
+    const { user } = req;
+
+    try {
+        const userProfile = await user.getUserInfo();
+        return res.status(200).json({
+            message: 'User profile retreived successfully',
+            ...userProfile
         });
     }
     catch (err) {
