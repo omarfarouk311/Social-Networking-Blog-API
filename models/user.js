@@ -66,7 +66,7 @@ module.exports = class User {
 
     static async getUserInfo(userId) {
         const db = getDb();
-        const user = await db.collection('users').aggregate([
+        const result = await db.collection('users').aggregate([
             {
                 $match: {
                     _id: userId
@@ -79,24 +79,34 @@ module.exports = class User {
                 }
             },
             {
+                $lookup: {
+                    from: 'posts',
+                    localField: '_id',
+                    foreignField: 'creatorId',
+                    as: 'posts',
+                    pipeline: [
+                        { $sort: { _id: -1 } },
+                        { $limit: 10 },
+                        { $project: { content: 0, imagesUrls: 0, creatorId: 0 } },
+                        { $addFields: { creator: { _id: '$_id', name: '$name' } } }
+                    ]
+                }
+            },
+            {
                 $project: {
                     password: 0,
                     bookmarksIds: 0,
+                    likedCommentsIds: 0,
                     email: 0,
                     followersIds: { $slice: [0, 20] },
                     followingIds: { $slice: [0, 20] },
-                    likedPostsIds: { $slice: [0, 10] }
+                    likedPostsIds: { $slice: [0, 10] },
                 }
             }
-        ]);
+        ]).toArray();
 
-        user.posts = await Post.getPosts({ creatorId: this._id })
-            .sort({ _id: -1 })
-            .limit(10)
-            .project({ content: 0, imagesUrls: 0, creatorId: 0 })
-            .toArray();
-        user.lastPostId = user.posts[user.posts.length - 1]['_id'].toString();
-
+        const user = result[0];
+        user.lastPostId = user.posts.length ? user.posts[user.posts.length - 1]['_id'].toString() : null;
         return user;
     }
 
@@ -123,10 +133,6 @@ module.exports = class User {
         return Promise.all([this.updateUser(filter, update), post.removeBookmark(this._id)]);
     }
 
-    getBookmarks(filter) {
-        return Post.getPosts(filter);
-    }
-
     likePost(post) {
         const filter = { _id: this._id }, update = { $push: { likedPostsIds: post._id } };
         return Promise.all([this.updateUser(filter, update), post.addLike(this._id)]);
@@ -145,13 +151,6 @@ module.exports = class User {
     unlikeComment(comment) {
         const filter = { _id: this._id }, update = { $pull: { likedCommentsIds: comment._id } };
         return Promise.all([this.updateUser(filter, update), comment.removeLike(this._id)]);
-    }
-
-    static joinCreators(posts) {
-        return Promise.all(posts.map(async post => {
-            const { creatorId } = post;
-            post.creator = await User.getUser({ _id: creatorId }).project({ name: 1, imageUrl: 1, _id: 0 });
-        }));
     }
 
     static async joinCommentsCreators(comments) {
