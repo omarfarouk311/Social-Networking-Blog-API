@@ -1,4 +1,5 @@
 const User = require('../models/user');
+const { getFilteredPosts } = require('./feed');
 
 exports.updatePostLikes = async (req, res, next) => {
     const { user, post, body } = req;
@@ -69,29 +70,34 @@ exports.removeBookmark = async (req, res, next) => {
 
 exports.getBookmarks = async (req, res, next) => {
     const { user } = req, { lastId } = req.query;
-    const filter = { _id: { $in: this.bookmarksIds } };
-
+    const filter = { _id: { $in: user.bookmarksIds } };
     if (lastId) {
         filter._id.$lt = lastId;
     }
 
     try {
-        const posts = await user.getBookmarks(filter)
-            .sort({ _id: -1 })
-            .limit(10)
-            .project({ content: 0, imagesUrls: 0 })
-            .toArray();
-
-        let lastPostId = null;
-        if (posts.length) {
-            await User.joinCreators(posts);
-            lastPostId = posts[posts.length - 1]['_id'].toString();
-        }
-
+        const result = await getFilteredPosts(filter);
         return res.status(200).json({
             message: 'Bookmarks fetched successfully',
-            posts,
-            lastPostId
+            ...result
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
+};
+
+exports.getUserLikes = async (req, res, next) => {
+    const { user } = req, { lastId } = req.query;
+    const filter = { _id: { $in: user.likedPostsIds } };
+    if (lastId) {
+        filter._id.$lt = lastId;
+    }
+
+    try {
+        const result = await getFilteredPosts(filter);
+        return res.status(200).json({
+            ...result
         });
     }
     catch (err) {

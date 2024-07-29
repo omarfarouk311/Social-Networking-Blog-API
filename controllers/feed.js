@@ -2,30 +2,27 @@ const Post = require('../models/post');
 const User = require('../models/user');
 const Comment = require('../models/comment');
 
+exports.getFilteredPosts = async filter => {
+    const posts = await Post.getPosts(filter).toArray();
+    let lastPostId = null;
+    if (posts.length) {
+        lastPostId = posts[posts.length - 1]['_id'].toString();
+    }
+    return { posts, lastPostId };
+};
+
 exports.getPosts = async (req, res, next) => {
+    const { lastId } = req.query;
+    let filter = {};
+    if (lastId) {
+        filter._id = { $lt: lastId };
+    }
+
     try {
-        const { lastId } = req.query;
-        let filter = {};
-        if (lastId) {
-            filter._id = { $lt: lastId };
-        }
-
-        const posts = await Post.getPosts(filter)
-            .sort({ _id: -1 })
-            .limit(10)
-            .project({ content: 0, imagesUrls: 0 })
-            .toArray();
-
-        let lastPostId = null;
-        if (posts.length) {
-            await User.joinCreators(posts);
-            lastPostId = posts[posts.length - 1]['_id'].toString();
-        }
-
+        const result = await this.getFilteredPosts(filter);
         return res.status(200).json({
             message: 'Posts fetched successfully',
-            posts,
-            lastPostId
+            ...result
         });
     }
     catch (err) {
