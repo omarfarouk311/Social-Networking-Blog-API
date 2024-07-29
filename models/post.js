@@ -41,7 +41,47 @@ module.exports = class Post {
 
     static async getPosts(filter) {
         const db = getDb();
-        return db.collection('posts').find(filter);
+        return db.collection('posts').aggregate([
+            {
+                $match: filter
+            },
+            {
+                $sort: {
+                    _id: -1
+                }
+            },
+            {
+                $limit: 10
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'creatorId',
+                    foreignField: '_id',
+                    as: 'creator'
+                }
+            },
+            {
+                $unwind: '$creator'
+            },
+            {
+                $project: {
+                    content: 0,
+                    imagesUrls: 0,
+                    creatorId: 0,
+                    'creator.email': 0,
+                    'creator.password': 0,
+                    'creator.bio': 0,
+                    'creator.location': 0,
+                    'creator.followingIds': 0,
+                    'creator.followersIds': 0,
+                    'creator.bookmarksIds ': 0,
+                    'creator.likedPostsIds ': 0,
+                    'creator.likedCommentsIds': 0,
+                    'creator.creationDate ': 0
+                }
+            }
+        ]);
     }
 
     static getPost(filter) {
