@@ -6,6 +6,7 @@ const { join } = require('path');
 const { notFound, errorHandlingMiddleware } = require('./middlewares/errors');
 const feedRouter = require('./routes/feed');
 const bookmarksRouter = require('./routes/bookmarks');
+const userRouter = require('./routes/user');
 
 const app = express();
 
@@ -21,6 +22,8 @@ app.use(cors({
 app.use('/feed', feedRouter);
 
 app.use('/bookmarks', bookmarksRouter);
+
+app.use('/profile', userRouter);
 
 app.use(notFound);
 
