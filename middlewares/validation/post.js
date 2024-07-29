@@ -1,6 +1,6 @@
 const Post = require('../../models/post');
 const { ObjectId } = require('mongodb');
-const { checkExact, body, validationResult } = require('express-validator');
+const { checkExact, body, validationResult, query } = require('express-validator');
 
 exports.checkPostExistence = async (req, res, next) => {
     const { postId } = req.params;
@@ -83,6 +83,17 @@ exports.validateLikesUpdating = [
         .withMessage('value must be 1 or -1')
     ,
     validateStructure
+];
+
+exports.validateQueryParams = [
+    query('lastId')
+        .optional()
+        .isString()
+        .withMessage("lastId must be a string")
+        .trim()
+        .isMongoId()
+        .withMessage('lastId must be a valid MongoDb ObjectId')
+        .customSanitizer(lastId => ObjectId.createFromHexString(lastId))
 ];
 
 exports.handleValidationErrors = (req, res, next) => {

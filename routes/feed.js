@@ -6,11 +6,12 @@ const commentsController = require('../controllers/comments');
 const { checkPostExistence, validateLikesUpdating, validatePostCreation, validatePostUpdating,
     handleValidationErrors } = require('../middlewares/validation/post');
 const { checkCommentExistence, validateCommentCreation, validateCommentUpdating } = require('../middlewares/validation/comments');
+const { validateQueryParams } = require('../middlewares/validation/post');
 const upload = require('../util/multer configurations');
 const router = Router();
 
 router.route('/')
-    .get(feedController.getPosts)
+    .get(validateQueryParams, feedController.getPosts)
     .post(validatePostCreation, upload.array('images', 15), handleValidationErrors, feedController.createPost)
     .all(notAllowed);
 
@@ -22,7 +23,7 @@ router.route('/:postId')
     .all(notAllowed);
 
 router.route('/:postId/comments')
-    .get(commentsController.getComments)
+    .get(validateQueryParams, commentsController.getComments)
     .post(validateCommentCreation, handleValidationErrors, commentsController.createComment)
     .all(notAllowed);
 
