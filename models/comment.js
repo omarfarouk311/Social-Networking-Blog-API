@@ -1,5 +1,6 @@
 const { getDb } = require('../util/database');
 const User = require('./user');
+const Post = require('./post');
 
 module.exports = class Comment {
     constructor({ content, creationDate, creatorId, likes, _id, postId, parentId, repliesCount, likingUsersIds }) {
@@ -50,11 +51,8 @@ module.exports = class Comment {
 
     deleteComment(filter, post) {
         const db = getDb();
-        const promises = [];
-
-        promises.push(db.collection('comments').deleteOne(filter));
-        promises.push(this.removeCommentFromLikedComments());
-        promises.push(post.updatePost({ _id: post._id }, { $inc: { commentsCount: -1 } }));
+        const promises = [db.collection('comments').deleteOne(filter), this.removeCommentFromLikedComments(),
+        post.updatePost({ _id: post._id }, { $inc: { commentsCount: -1 } })];
         if (this.parentId) {
             promises.push(this.updateComment({ _id: this.parentId }, { $inc: { repliesCount: -1 } }));
         }
@@ -64,16 +62,21 @@ module.exports = class Comment {
 
     static async deleteComments(filter) {
         const db = getDb();
-        const comments = Comment.getComments(filter).project({ likingUsersIds: 1 });
-        const likingUsersIds = [], commentsIds = [];
+        const comments = Comment.getComments(filter).project({ likingUsersIds: 1, postId: 1, parentId: 1 });
+        const likingUsersIds = [], commentsIds = [], postsIds = [], parentsIds = [];
 
         comments.forEach(comment => {
             likingUsersIds.push(...comment.likingUsersIds);
-            commentsIds.push(comment._id)
+            commentsIds.push(comment._id);
+            postsIds.push(comment.postId);
+            if (comment.parentId) parentsIds.push(comment.parentId);
         });
 
-        return Promise.all([db.collection('comments').deleteMany(filter),
-        Comment.removeCommentsFromLikedComments(likingUsersIds, comments)]);
+        const promises = [db.collection('comments').deleteMany(filter), Comment.removeCommentsFromLikedComments(likingUsersIds, comments),
+        Post.updatePosts({ _id: { $in: postsIds } }, { $inc: { commentsCount: -1 } }),
+        this.updateComments({ _id: { $in: parentsIds } }, { $inc: { repliesCount: -1 } })];
+
+        return Promise.all([promises]);
     }
 
     addLike(userId) {
