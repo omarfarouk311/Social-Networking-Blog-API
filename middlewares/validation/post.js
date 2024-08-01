@@ -1,14 +1,12 @@
 const Post = require('../../models/post');
 const { ObjectId } = require('mongodb');
-const { checkExact, body, validationResult, query } = require('express-validator');
+const { checkExact, body, validationResult, query, param } = require('express-validator');
 
 exports.checkPostExistence = async (req, res, next) => {
     const { postId } = req.params;
+
     try {
-        let post;
-        if (postId.length === 24) {
-            post = await Post.getPost({ _id: ObjectId.createFromHexString(postId) });
-        }
+        const post = await Post.getPost({ _id: postId }).project({ _id: 1 });
 
         if (!post) {
             const err = new Error('Post not found');
@@ -25,9 +23,27 @@ exports.checkPostExistence = async (req, res, next) => {
 };
 
 const validateStructure = checkExact([], {
-    message: 'Bad request, request structure is invalid because too many fields are passed',
-    locations: ['body', 'query']
+    message: 'Bad request, request structure is invalid because too many fields are passed'
 });
+
+const validatePostId = () => param('postId')
+    .notEmpty()
+    .withMessage("postId can't be empty")
+    .isString()
+    .withMessage("postId must be a string")
+    .trim()
+    .isMongoId()
+    .withMessage('postId must be a valid MongoDb ObjectId')
+    .customSanitizer(postId => ObjectId.createFromHexString(postId))
+
+const validateLastId = () => query('lastId')
+    .optional()
+    .isString()
+    .withMessage("lastId must be a string")
+    .trim()
+    .isMongoId()
+    .withMessage('lastId must be a valid MongoDb ObjectId')
+    .customSanitizer(lastId => ObjectId.createFromHexString(lastId))
 
 const validatePostTitle = () => body('title')
     .notEmpty()
@@ -56,6 +72,8 @@ exports.validatePostCreation = [
 ];
 
 exports.validatePostUpdating = [
+    validatePostId()
+    ,
     validatePostTitle().optional()
     ,
     validatePostContent.optional()
@@ -74,9 +92,13 @@ exports.validatePostUpdating = [
 ];
 
 exports.validateLikesUpdating = [
+    validatePostId()
+    ,
     body('modifyLikes')
         .isBoolean()
         .withMessage("modifyLikes value must be a boolean value")
+        .custom(value => value === true)
+        .withMessage("modifyLikes must be true")
     ,
     body('value')
         .isInt({ allow_leading_zeroes: false, max: 1, min: -1 })
@@ -85,16 +107,9 @@ exports.validateLikesUpdating = [
     validateStructure
 ];
 
-exports.validateQueryParams = [
-    query('lastId')
-        .optional()
-        .isString()
-        .withMessage("lastId must be a string")
-        .trim()
-        .isMongoId()
-        .withMessage('lastId must be a valid MongoDb ObjectId')
-        .customSanitizer(lastId => ObjectId.createFromHexString(lastId))
-];
+exports.validateLastId = validateLastId();
+
+exports.validatePostId = validatePostId();
 
 exports.handleValidationErrors = (req, res, next) => {
     let errors = validationResult(req);
