@@ -1,15 +1,4 @@
 const Post = require('../models/post');
-const User = require('../models/user');
-const Comment = require('../models/comment');
-
-exports.getFilteredPosts = async filter => {
-    const posts = await Post.getPosts(filter).toArray();
-    let lastPostId = null;
-    if (posts.length) {
-        lastPostId = posts[posts.length - 1]['_id'].toString();
-    }
-    return { posts, lastPostId };
-};
 
 exports.getPosts = async (req, res, next) => {
     const { lastId } = req.query;
@@ -19,7 +8,7 @@ exports.getPosts = async (req, res, next) => {
     }
 
     try {
-        const result = await this.getFilteredPosts(filter);
+        const result = await Post.getPosts(filter, true);
         return res.status(200).json({
             message: 'Posts fetched successfully',
             ...result
@@ -31,23 +20,30 @@ exports.getPosts = async (req, res, next) => {
 };
 
 exports.getPost = async (req, res, next) => {
-    const { post } = req;
+    const { postId } = req.params;
+    try {
+        const post = await Post.getPost({ _id: postId }, true);
+        if (!post) {
+            return res.status(404).json({
+                message: 'Post not found'
+            });
+        }
 
-    await Comment.joinComments(post);
-    await User.joinCommentsCreators(post.comments);
-
-    return res.status(200).json({
-        message: 'Post fetched successfully',
-        ...post
-    });
+        return res.status(200).json({
+            message: 'Post fetched successfully',
+            ...post
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
 };
 
 exports.createPost = async (req, res, next) => {
-    const { title, content } = req.body, { user } = req;
+    const { body } = req.body, { userId } = req;
     const post = new Post({
-        title,
-        content,
-        creatorId: user._id,
+        ...body,
+        creatorId: userId,
         creationDate: new Date(Date.now()).toISOString(),
         tags: [],
         commentsIds: [],
