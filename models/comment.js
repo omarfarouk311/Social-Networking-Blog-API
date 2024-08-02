@@ -39,9 +39,46 @@ module.exports = class Comment {
         return db.collection('comments').updateMany(filter, update);
     }
 
-    static getComments(filter) {
+    static async getComments(filter, aggregate) {
         const db = getDb();
-        return db.collection('comments').find(filter);
+
+        if (!aggregate) {
+            return db.collection('comments').find(filter);
+        }
+
+        const comments = await db.collection('comments').aggregate([
+            {
+                $match: filter
+            },
+            {
+                $sort: { _id: -1 }
+            },
+            {
+                $limit: 10
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'creatorId',
+                    foreignField: '_id',
+                    as: 'creator',
+                    pipeline: [
+                        {
+                            $project: {
+                                name: 1,
+                                imageUrl: 1
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                $unwind: '$creator'
+            }
+        ]).toArray();
+
+        const lastCommentId = comments.length ? comments[comments.length - 1]['_id'].toString() : null;
+        return { comments, lastCommentId };
     }
 
     static getComment(filter) {
@@ -97,11 +134,6 @@ module.exports = class Comment {
     static removeCommentsFromLikedComments(likingUsersIds, commentsIds) {
         const filter = { _id: { $in: likingUsersIds } }, update = { $pull: { likedCommentsIds: { $in: commentsIds } } };
         return User.updateUsers(filter, update);
-    }
-
-    static async joinComments(post) {
-        post.comments = await Comment.getComments({ postId: post._id }).sort({ _id: -1 }).limit(10).toArray();
-        post.lastCommentId = post.comment.length ? post.comments[post.comments.length - 1]['_id'].toString() : null;
     }
 
 }

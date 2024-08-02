@@ -39,9 +39,14 @@ module.exports = class Post {
         return db.collection('posts').updateMany(filter, update);
     }
 
-    static async getPosts(filter) {
+    static async getPosts(filter, aggregate) {
         const db = getDb();
-        return db.collection('posts').aggregate([
+
+        if (!aggregate) {
+            return db.collection('posts').find(filter);
+        }
+
+        const posts = await db.collection('posts').aggregate([
             {
                 $match: filter
             },
@@ -58,7 +63,15 @@ module.exports = class Post {
                     from: 'users',
                     localField: 'creatorId',
                     foreignField: '_id',
-                    as: 'creator'
+                    as: 'creator',
+                    pipeline: [
+                        {
+                            $project: {
+                                name: 1,
+                                imageUrl: 1
+                            }
+                        }
+                    ]
                 }
             },
             {
@@ -67,26 +80,58 @@ module.exports = class Post {
             {
                 $project: {
                     content: 0,
-                    imagesUrls: 0,
-                    creatorId: 0,
-                    'creator.email': 0,
-                    'creator.password': 0,
-                    'creator.bio': 0,
-                    'creator.location': 0,
-                    'creator.followingIds': 0,
-                    'creator.followersIds': 0,
-                    'creator.bookmarksIds ': 0,
-                    'creator.likedPostsIds ': 0,
-                    'creator.likedCommentsIds': 0,
-                    'creator.creationDate ': 0
+                    imagesUrls: 0
                 }
             }
-        ]);
+        ]).toArray();
+
+        const lastPostId = posts.length ? posts[posts.length - 1]['_id'].toString() : null;
+        return { posts, lastPostId };
     }
 
-    static getPost(filter) {
+    static async getPost(filter, aggregate = false) {
         const db = getDb();
-        return db.collection('posts').findOne(filter);
+
+        if (!aggregate) {
+            return db.collection('posts').findOne(filter);
+        }
+
+        const resultPost = await db.collection('posts').aggregate([
+            {
+                $match: filter
+            },
+            {
+                $lookup: {
+                    from: 'comments',
+                    localField: '_id',
+                    foreignField: 'postId',
+                    as: 'comments',
+                    pipeline: [
+                        { $sort: { _id: -1 } },
+                        { $limit: 10 },
+                        {
+                            $lookup: {
+                                from: 'users',
+                                localField: 'creatorId',
+                                foreignField: '_id',
+                                as: 'creator',
+                                pipeline: [
+                                    { $project: { name: 1, imageUrl: 1 } }
+                                ]
+                            }
+                        },
+                        { $unwind: '$creator' }
+                    ]
+                }
+            },
+            {
+                $project: {
+                    lastCommentId: { $arrayElemAt: ['comments._id', -1] }
+                }
+            }
+        ]).toArray();
+
+        return resultPost ? resultPost[0] : null;
     }
 
     async deletePost(filter) {

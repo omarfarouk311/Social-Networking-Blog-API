@@ -1,7 +1,7 @@
 const { getDb } = require('../util/database');
 const Post = require('./post');
 const Comment = require('./comment');
-const { promises: fsPromises } = require('fs');
+const { deleteImages, updateImages } = require('../util/images.js');
 
 module.exports = class User {
     constructor({ _id, email, password, name, imageUrl, followingIds, followersIds, bookmarksIds, likedPostsIds, bio, location,
@@ -56,20 +56,21 @@ module.exports = class User {
         promises.push(db.collection('users').deleteOne({ _id: this._id }));
         await Promise.all(promises);
 
-        fsPromises.unlink(imageUrl).catch(err => console.error(err));
+        deleteImages([imageUrl]);
     }
 
-    static getUser(filter) {
-        const db = getDb();
-        return db.collection('users').findOne(filter);
-    }
 
-    async getUserInfo() {
+    static async getUser(filter, aggregate) {
         const db = getDb();
+
+        if (!aggregate) {
+            return db.collection.findOne(filter);
+        }
+
         const result = await db.collection('users').aggregate([
             {
                 $match: {
-                    _id: this._id
+                    _id: filter
                 }
             },
             {
@@ -88,7 +89,6 @@ module.exports = class User {
                         { $sort: { _id: -1 } },
                         { $limit: 10 },
                         { $project: { content: 0, imagesUrls: 0, creatorId: 0 } },
-                        { $addFields: { creator: { _id: '$_id', name: '$name' } } }
                     ]
                 }
             },
@@ -101,13 +101,29 @@ module.exports = class User {
                     followersIds: { $slice: [0, 20] },
                     followingIds: { $slice: [0, 20] },
                     likedPostsIds: { $slice: [0, 10] },
+                    posts: {
+                        $map: {
+                            input: '$posts',
+                            as: 'post',
+                            $in: {
+                                $mergeObjects: [
+                                    '$$post',
+                                    {
+                                        creator: {
+                                            _id: '$_id',
+                                            name: '$name'
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        lastPostId: { $arrayElemAt: ['$posts._id', -1] }
+                    }
                 }
             }
         ]).toArray();
 
-        const user = result[0];
-        user.lastPostId = user.posts.length ? user.posts[user.posts.length - 1]['_id'].toString() : null;
-        return user;
+        return result ? result[0] : null;
     }
 
     updateFollowers(followedId, type) {
@@ -151,13 +167,6 @@ module.exports = class User {
     unlikeComment(comment) {
         const filter = { _id: this._id }, update = { $pull: { likedCommentsIds: comment._id } };
         return Promise.all([this.updateUser(filter, update), comment.removeLike(this._id)]);
-    }
-
-    static async joinCommentsCreators(comments) {
-        return Promise.all(comments.map(async comment => {
-            const { creatorId } = comment;
-            comment.creator = await User.getUser({ _id: creatorId }).project({ name: 1, imageUrl: 1, _id: 0 });
-        }));
     }
 
 }
