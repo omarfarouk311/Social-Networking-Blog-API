@@ -17,15 +17,11 @@ module.exports = class Comment {
 
     async createComment(post) {
         const db = getDb();
-        const promises = [];
-
-        promises.push(db.collection('comments').insertOne(this));
-        promises.push(post.updatePost({ _id: post._id }, { $inc: { commentsCount: 1 } }));
+        const promises = [db.collection('comments').insertOne(this), post.updatePost({ _id: post._id }, { $inc: { commentsCount: 1 } })];
         if (this.parentId) {
             promises.push(this.updateComment({ _id: this.parentId }, { $inc: { repliesCount: 1 } }));
         }
-
-        const { insertedId } = await Promise.all([promises])[0];
+        const { insertedId } = await Promise.all(promises)[0];
         this._id = insertedId;
     }
 
@@ -39,7 +35,7 @@ module.exports = class Comment {
         return db.collection('comments').updateMany(filter, update);
     }
 
-    static async getComments(filter, aggregate) {
+    static async getComments(filter, userId = null, aggregate = false) {
         const db = getDb();
 
         if (!aggregate) {
@@ -74,6 +70,9 @@ module.exports = class Comment {
             },
             {
                 $unwind: '$creator'
+            },
+            {
+                $addFields: { liked: { $in: [userId, '$likingUsersIds'] } }
             }
         ]).toArray();
 

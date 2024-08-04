@@ -39,7 +39,7 @@ module.exports = class Post {
         return db.collection('posts').updateMany(filter, update);
     }
 
-    static async getPosts(filter, aggregate) {
+    static async getPosts(filter, userId = null, aggregate = false) {
         const db = getDb();
 
         if (!aggregate) {
@@ -80,7 +80,9 @@ module.exports = class Post {
             {
                 $project: {
                     content: 0,
-                    imagesUrls: 0
+                    imagesUrls: 0,
+                    liked: { $in: [userId, '$likingUsersIds'] },
+                    bookmarked: { $in: [userId, '$bookmarkingUsersIds'] }
                 }
             }
         ]).toArray();
