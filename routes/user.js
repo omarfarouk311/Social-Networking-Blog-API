@@ -16,3 +16,5 @@ router.route('/posts')
 router.route('/likes')
     .get(validateQueryParams, handleValidationErrors, userController.getUserLikes)
     .all(notAllowed);
+
+module.exports = router;

@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { notAllowed } = require('../middlewares/errors');
-const { validateQueryParams, handleValidationErrors } = require('../middlewares/validation/post');
+const { validateQueryParams, handleValidationErrors, validatePostId } = require('../middlewares/validation/post');
 const userController = require('../controllers/user');
 const router = Router();
 
@@ -10,5 +10,7 @@ router.route('/')
     .all(notAllowed);
 
 router.route('/:postId')
-    .delete(userController.removeBookmark)
+    .delete(validatePostId, handleValidationErrors, userController.removeBookmark)
     .all(notAllowed);
+
+module.exports = router;
