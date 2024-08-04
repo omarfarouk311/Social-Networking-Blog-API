@@ -1,17 +1,16 @@
 const Comment = require('../../models/comment');
 const { ObjectId } = require('mongodb');
-const { checkExact, body, validationResult } = require('express-validator');
+const { checkExact, body, param } = require('express-validator');
+const { validatePostId } = require('./post');
 
 exports.checkCommentExistence = async (req, res, next) => {
-    const { commentId } = req.params;
+    const { commentId, postId } = req.params;
+
     try {
-        let comment;
-        if (commentId.length === 24) {
-            comment = await comment.getcomment({ _id: ObjectId.createFromHexString(commentId) });
-        }
+        const comment = await Comment.getcomment({ postId, _id: commentId }).project({ _id: 1 });
 
         if (!comment) {
-            const err = new Error('comment not found');
+            const err = new Error('Comment not found');
             err.statusCode = 404;
             throw err;
         }
@@ -26,8 +25,17 @@ exports.checkCommentExistence = async (req, res, next) => {
 
 const validateStructure = checkExact([], {
     message: 'Bad request, request structure is invalid because too many fields are passed',
-    locations: ['body', 'query']
 });
+
+const validateCommentId = () => param('commentId')
+    .notEmpty()
+    .withMessage("commentId can't be empty")
+    .isString()
+    .withMessage("commentId must be a string")
+    .trim()
+    .isMongoId()
+    .withMessage('commentId must be a valid MongoDb ObjectId')
+    .customSanitizer(commentId => ObjectId.createFromHexString(commentId))
 
 const validateCommentContent = () => body('content')
     .notEmpty()
@@ -56,7 +64,15 @@ exports.validateCommentCreation = [
 ];
 
 exports.validateCommentUpdating = [
+    this.validateRouteParams
+    ,
     validateCommentContent()
     ,
     validateStructure
+];
+
+exports.validateRouteParams = [
+    validateCommentId()
+    ,
+    validatePostId
 ];

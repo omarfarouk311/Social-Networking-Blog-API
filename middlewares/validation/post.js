@@ -92,8 +92,6 @@ exports.validatePostUpdating = [
 ];
 
 exports.validateLikesUpdating = [
-    validatePostId()
-    ,
     body('modifyLikes')
         .isBoolean()
         .withMessage("modifyLikes value must be a boolean value")
@@ -124,4 +122,4 @@ exports.handleValidationErrors = (req, res, next) => {
         return next(errors.array());
     }
     next();
-}
+};
