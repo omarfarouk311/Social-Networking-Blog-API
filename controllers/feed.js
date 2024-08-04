@@ -1,14 +1,14 @@
 const Post = require('../models/post');
 
 exports.getPosts = async (req, res, next) => {
-    const { lastId } = req.query;
+    const { lastId } = req.query, { userId } = req;;
     let filter = {};
     if (lastId) {
         filter._id = { $lt: lastId };
     }
 
     try {
-        const result = await Post.getPosts(filter, true);
+        const result = await Post.getPosts(filter, userId, true);
         return res.status(200).json({
             message: 'Posts fetched successfully',
             ...result
@@ -105,7 +105,7 @@ exports.updatePost = async (req, res, next) => {
             req.files.forEach(file => body.imagesUrls.push(file.path));
         }
 
-        const updatedPost = await post.updatePost({ _id: post._id }, body);
+        const updatedPost = await post.updatePost({ _id: post._id }, { $set: body });
         return res.status(200).json({
             message: 'Post updated successfully',
             ...updatedPost

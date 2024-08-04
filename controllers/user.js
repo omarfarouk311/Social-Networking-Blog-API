@@ -1,8 +1,9 @@
 const User = require('../models/user');
-const { getFilteredPosts } = require('./feed');
+const Post = require('../models/post');
 
 exports.updatePostLikes = async (req, res, next) => {
-    const { user, post, body } = req;
+    const { userId, post, body } = req;
+    const user = new User({ _id: userId });
     let updatedPost;
 
     try {
@@ -20,7 +21,8 @@ exports.updatePostLikes = async (req, res, next) => {
 };
 
 exports.updateCommentLikes = async (req, res, next) => {
-    const { body, user, comment } = req;
+    const { body, userId, comment } = req;
+    const user = new User({ _id: userId });
     let updatedComment;
 
     try {
@@ -69,14 +71,15 @@ exports.removeBookmark = async (req, res, next) => {
 };
 
 exports.getBookmarks = async (req, res, next) => {
-    const { user } = req, { lastId } = req.query;
-    const filter = { _id: { $in: user.bookmarksIds } };
+    const { userId } = req, { lastId } = req.query;
+    const bookmarksIds = User.getUser({ _id: userId }).project({ bookmarksIds: 1, _id: 0 });
+    const filter = { _id: { $in: bookmarksIds } };
     if (lastId) {
         filter._id.$lt = lastId;
     }
 
     try {
-        const result = await getFilteredPosts(filter);
+        const result = await Post.getPosts(filter, userId, true);
         return res.status(200).json({
             message: 'Bookmarks fetched successfully',
             ...result
@@ -88,14 +91,15 @@ exports.getBookmarks = async (req, res, next) => {
 };
 
 exports.getUserLikes = async (req, res, next) => {
-    const { user } = req, { lastId } = req.query;
-    const filter = { _id: { $in: user.likedPostsIds } };
+    const { userId } = req, { lastId } = req.query;
+    const likedPostsIds = User.getUser({ _id: userId }).project({ likedPostsIds: 1, _id: 0 });
+    const filter = { _id: { $in: likedPostsIds } };
     if (lastId) {
         filter._id.$lt = lastId;
     }
 
     try {
-        const result = await getFilteredPosts(filter);
+        const result = await Post.getPosts(filter, userId, true);
         return res.status(200).json({
             message: 'User liked posts fetched successfully',
             ...result
@@ -107,14 +111,14 @@ exports.getUserLikes = async (req, res, next) => {
 };
 
 exports.getUserPosts = async (req, res, next) => {
-    const { user } = req, { lastId } = req.query;
-    const filter = { creatorId: user._id };
+    const { userId } = req, { lastId } = req.query;
+    const filter = { creatorId: userId };
     if (lastId) {
         filter._id.$lt = lastId;
     }
 
     try {
-        const result = await getFilteredPosts(filter);
+        const result = await Post.getPosts(filter, userId, true);
         return res.status(200).json({
             message: 'User posts fetched successfully',
             ...result
@@ -126,16 +130,43 @@ exports.getUserPosts = async (req, res, next) => {
 };
 
 exports.getUserProfile = async (req, res, next) => {
-    const { user } = req;
+    const { userId } = req;
 
     try {
-        const userProfile = await user.getUserInfo();
-        return res.status(200).json({
-            message: 'User profile retreived successfully',
-            ...userProfile
+        const userProfile = await User.getUser({ _id: userId }, true);
+
+        if (userProfile) {
+            return res.status(200).json({
+                message: 'User profile retreived successfully',
+                ...userProfile
+            });
+        }
+        else {
+            return res.status(404).json({
+                message: 'User not found'
+            });
+        }
+    }
+    catch (err) {
+        return next(err);
+    }
+};
+
+exports.deleteUser = async (req, res, next) => {
+    const { userId } = req;
+    const user = new User({ _id: userId });
+
+    try {
+        await user.deleteUser();
+        return res.status(204).json({
+            message: 'User deleted successfully'
         });
     }
     catch (err) {
         return next(err);
     }
+};
+
+exports.updateFollowers = async (req, res, next) => {
+
 };

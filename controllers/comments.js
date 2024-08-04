@@ -1,29 +1,18 @@
 const Comment = require('../models/comment');
-const User = require('../models/user');
+const Post = require('../models/post');
 
 exports.getComments = async (req, res, next) => {
+    const { lastId } = req.query, { userId } = req, { postId } = req.params;
+    const filter = { postId };
+    if (lastId) {
+        filter._id = { $lt: lastId };
+    }
+
     try {
-        const { lastId } = req.query, { post } = req;
-        let filter = { postId: post._id };
-        if (lastId) {
-            filter._id = { $lt: lastId };
-        }
-
-        const comments = await Comment.getComments(filter)
-            .sort({ _id: -1 })
-            .limit(10)
-            .toArray();
-
-        let lastCommentId = null;
-        if (comments.length) {
-            await User.joinCommentsCreators(comments);
-            lastCommentId = comments[comments.length - 1]['_id'].toString();
-        }
-
+        const result = await Comment.getComments(filter, userId, true);
         return res.status(200).json({
             message: 'Comments fetched successfully',
-            comments,
-            lastCommentId
+            ...result
         });
     }
     catch (err) {
@@ -32,17 +21,17 @@ exports.getComments = async (req, res, next) => {
 };
 
 exports.createComment = async (req, res, next) => {
-    const { content, parentId } = req.body, { user, post } = req;
+    const { body, userId } = req, { postId } = req.params;
     const comment = new Comment({
-        content,
+        ...body,
         creationDate: new Date(Date.now()).toISOString(),
-        creatorId: user._id,
-        postId: post._id,
+        creatorId: userId,
+        postId,
         likes: 0,
-        parentId,
         repliesCount: 0,
         likingUsersIds: []
     });
+    const post = new Post({ _id: postId });
 
     try {
         await comment.createComment(post);
@@ -57,7 +46,9 @@ exports.createComment = async (req, res, next) => {
 };
 
 exports.deleteComment = async (req, res, next) => {
-    const { post, comment } = req;
+    const { comment } = req, { postId } = req.params;
+    const post = new Post({ _id: postId });
+
     try {
         await comment.deleteComment({ _id: comment._id }, post);
         return res.status(204).json({ message: 'Comment deleted successfully' });
@@ -74,7 +65,7 @@ exports.updateComment = async (req, res, next) => {
     }
 
     try {
-        const updatedComment = await comment.updateComment({ _id: comment._id }, body);
+        const updatedComment = await comment.updateComment({ _id: comment._id }, { $set: body });
         return res.status(200).json({
             message: 'Post updated successfully',
             ...updatedComment
