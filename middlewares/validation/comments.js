@@ -63,16 +63,16 @@ exports.validateCommentCreation = [
     validateStructure
 ];
 
-exports.validateCommentUpdating = [
-    this.validateRouteParams
-    ,
-    validateCommentContent()
-    ,
-    validateStructure
-];
-
 exports.validateRouteParams = [
     validateCommentId()
     ,
     validatePostId
+];
+
+exports.validateCommentUpdating = [
+    ...exports.validateRouteParams
+    ,
+    validateCommentContent()
+    ,
+    validateStructure
 ];

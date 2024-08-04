@@ -76,7 +76,7 @@ exports.validatePostUpdating = [
     ,
     validatePostTitle().optional()
     ,
-    validatePostContent.optional()
+    validatePostContent().optional()
     ,
     body('tags')
         .optional()
@@ -105,7 +105,9 @@ exports.validateLikesUpdating = [
     validateStructure
 ];
 
-exports.validateLastId = validateLastId();
+exports.validateQueryParams = [
+    validateLastId()
+];
 
 exports.validatePostId = validatePostId();
 
