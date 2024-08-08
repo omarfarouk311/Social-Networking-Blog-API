@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { getDb } = require('../util/database');
+const { ObjectId } = require('mongodb');
 
 exports.authenticateUser = async (req, res, next) => {
     let token = req.get('Authorization');
@@ -20,7 +21,7 @@ exports.authenticateUser = async (req, res, next) => {
             throw err;
         }
 
-        req.userId = decoded.userId;
+        req.userId = ObjectId.createFromHexString(decoded.userId);
         return next();
     }
     catch (err) {
