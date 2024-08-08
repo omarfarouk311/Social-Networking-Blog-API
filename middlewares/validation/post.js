@@ -107,7 +107,8 @@ exports.validateLikesUpdating = [
 ];
 
 exports.validateQueryParams = [
-    validateLastId()
+    validateLastId(),
+    validateStructure
 ];
 
 exports.validatePostId = validatePostId();
