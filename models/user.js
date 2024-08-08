@@ -5,7 +5,7 @@ const { deleteImages, updateImages } = require('../util/images.js');
 
 module.exports = class User {
     constructor({ _id, email, password, name, imageUrl, followingIds, followersIds, bookmarksIds, likedPostsIds, bio, location,
-        creationDate }) {
+        creationDate, followingCount, followersCount }) {
         this._id = _id;
         this.email = email;
         this.password = password;
@@ -19,6 +19,8 @@ module.exports = class User {
         this.likedPostsIds = likedPostsIds;
         this.likedCommentsIds = likedCommentsIds;
         this.creationDate = creationDate;
+        this.followingCount = followingCount;
+        this.followersCount = followersCount;
     }
 
     async createUser() {
@@ -27,14 +29,18 @@ module.exports = class User {
         this._id = insertedId;
     }
 
-    updateUser(filter, update) {
+    async findAndUpdateUser(filter, update, projection) {
         const db = getDb();
-        const updatedUser = db.collection('users').findOneAndUpdate(filter, update, { returnDocument: 'after' })
-            .project({ password: 0 });
+        const updatedUser = await db.collection('users').findOneAndUpdate(filter, update, { projection, returnDocument: 'after' });
         if (update.imageUrl) {
             updateImages([this.imageUrl], [updatedUser.imageUrl]);
         }
         return updatedUser;
+    }
+
+    updateUser(filter, update) {
+        const db = getDb();
+        return db.collection('users').updateOne(filter, update);
     }
 
     static updateUsers(filter, update) {
@@ -48,9 +54,16 @@ module.exports = class User {
         const promises = [];
 
         promises.push(Post.deletePosts({ creatorId: this._id }));
-        promises.push(Post.updatePosts({ _id: { $in: this.likedPostsIds } }, { $inc: { likes: -1 } }));
+        promises.push(Post.updatePosts({ _id: { $in: this.likedPostsIds } }, {
+            $inc: { likes: -1 },
+            $pull: { likingUsersIds: this._id }
+        }));
+        promises.push(Post.updatePosts({ _id: { $in: this.bookmarksIds } }, { $pull: { bookmarkingUsersIds: this._id } }));
         promises.push(Comment.deleteComments({ creatorId: this._id }));
-        promises.push(Comment.updateComments({ _id: { $in: this.likedCommentsIds } }, { $inc: { likes: -1 } }));
+        promises.push(Comment.updateComments({ _id: { $in: this.likedCommentsIds } }, {
+            $inc: { likes: -1 },
+            $pull: { likingUsersIds: this._id }
+        }));
         promises.push(User.updateUsers({ _id: { $in: this.followersIds } }, { $pull: { followingIds: this._id } }));
         promises.push(User.updateUsers({ _id: { $in: this.followingIds } }, { $pull: { followersIds: this._id } }));
         promises.push(db.collection('users').deleteOne({ _id: this._id }));
@@ -59,24 +72,12 @@ module.exports = class User {
         deleteImages([imageUrl]);
     }
 
-
-    static async getUser(filter, aggregate) {
+    static async getUserInfo(filter) {
         const db = getDb();
-
-        if (!aggregate) {
-            return db.collection.findOne(filter);
-        }
-
         const result = await db.collection('users').aggregate([
             {
                 $match: {
                     _id: filter
-                }
-            },
-            {
-                $addFields: {
-                    followersCount: { $size: '$followersIds' },
-                    followingCount: { $size: '$followingIds' }
                 }
             },
             {
@@ -94,13 +95,13 @@ module.exports = class User {
             },
             {
                 $project: {
+                    email: 0,
                     password: 0,
                     bookmarksIds: 0,
                     likedCommentsIds: 0,
-                    email: 0,
-                    followersIds: { $slice: [0, 20] },
-                    followingIds: { $slice: [0, 20] },
-                    likedPostsIds: { $slice: [0, 10] },
+                    followersIds: 0,
+                    followingIds: 0,
+                    likedPostsIds: 0,
                     posts: {
                         $map: {
                             input: '$posts',
@@ -126,47 +127,84 @@ module.exports = class User {
         return result ? result[0] : null;
     }
 
+    static getUser(filter, projection) {
+        const db = getDb();
+        return db.collection.findOne(filter, projection);
+    }
+
     updateFollowers(followedId, type) {
-        const promise1 = this.updateUser(
-            { _id: this._id },
-            type === 1 ? { $push: { followingIds: followedId } } : { $pull: { followingIds: followedId } }
-        );
-        const promise2 = this.updateUser(
-            { _id: followedId },
-            type === 1 ? { $push: { followersIds: this._id } } : { $pull: { followersIds: this._id } }
-        );
+        let promise1, promise2;
+
+        if (type === 1) {
+            promise1 = this.findAndUpdateUser(
+                { _id: this._id },
+                { $push: { followingIds: followedId }, $inc: { followingCount: 1 } },
+                { followingCount: 1, _id: 0 }
+            );
+
+            promise2 = this.findAndUpdateUser(
+                { _id: followedId },
+                { $push: { followersIds: this._id }, $inc: { followersCount: 1 } },
+                { followersCount: 1, _id: 0 }
+            );
+        }
+        else {
+            promise1 = this.findAndUpdateUser(
+                { _id: this._id },
+                { $pull: { followingIds: followedId }, $inc: { followingCount: -1 } },
+                { followingCount: 1, _id: 0 }
+            );
+
+            promise2 = this.findAndUpdateUser(
+                { _id: followedId },
+                { $pull: { followersIds: this._id }, $inc: { followersCount: -1 } },
+                { followersCount: 1, _id: 0 }
+            );
+        }
 
         return Promise.all([promise1, promise2]);
     }
 
-    addBookmark(post) {
-        const filter = { _id: this._id }, update = { $push: { bookmarksIds: post._id } };
-        return Promise.all([this.updateUser(filter, update), post.addBookmark(this._id)]);
+    async addBookmark(post) {
+        const filter = { _id: this._id }, update = { $addToSet: { bookmarksIds: post._id } };
+        const { modifiedCount } = await this.updateUser(filter, update);
+        if (!modifiedCount) return null;
+        return post.addBookmark(this._id);
     }
 
-    removeBookmark(post) {
+    async removeBookmark(post) {
         const filter = { _id: this._id }, update = { $pull: { bookmarksIds: post._id } };
-        return Promise.all([this.updateUser(filter, update), post.removeBookmark(this._id)]);
+        const { modifiedCount } = await this.updateUser(filter, update);
+        if (!modifiedCount) return null;
+        return post.removeBookmark(this._id);
     }
 
-    likePost(post) {
-        const filter = { _id: this._id }, update = { $push: { likedPostsIds: post._id } };
-        return Promise.all([this.updateUser(filter, update), post.addLike(this._id)]);
+    async likePost(post) {
+        const filter = { _id: this._id }, update = { $addToSet: { likedPostsIds: post._id } };
+        const { modifiedCount } = await this.updateUser(filter, update);
+        if (!modifiedCount) return null;
+        return post.addLike(this._id);
     }
 
-    unlikePost(post) {
+    async unlikePost(post) {
         const filter = { _id: this._id }, update = { $pull: { likedPostsIds: post._id } };
-        return Promise.all([this.updateUser(filter, update), post.removeLike(this._id)]);
+        const { modifiedCount } = await this.updateUser(filter, update);
+        if (!modifiedCount) return null;
+        return post.removeLike(this._id);
     }
 
-    likeComment(comment) {
-        const filter = { _id: this._id }, update = { $push: { likedCommentsIds: comment._id } };
-        return Promise.all([this.updateUser(filter, update), comment.addLike(this._id)]);
+    async likeComment(comment) {
+        const filter = { _id: this._id }, update = { $addToSet: { likedCommentsIds: comment._id } };
+        const { modifiedCount } = await this.updateUser(filter, update);
+        if (!modifiedCount) return null;
+        return comment.addLike(this._id);
     }
 
-    unlikeComment(comment) {
+    async unlikeComment(comment) {
         const filter = { _id: this._id }, update = { $pull: { likedCommentsIds: comment._id } };
-        return Promise.all([this.updateUser(filter, update), comment.removeLike(this._id)]);
+        const { modifiedCount } = await this.updateUser(filter, update);
+        if (!modifiedCount) return null;
+        return comment.removeLike(this._id);
     }
 
 }

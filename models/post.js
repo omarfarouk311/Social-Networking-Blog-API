@@ -5,7 +5,7 @@ const { deleteImages, updateImages } = require('../util/images.js');
 
 module.exports = class Post {
     constructor({ _id, title, content, imagesUrls, creatorId, creationDate, tags, likes, bookmarkingUsersIds, likingUsersIds,
-        commentsCount }) {
+        commentsCount, bookmarksCount }) {
         this._id = _id;
         this.title = title;
         this.content = content;
@@ -17,6 +17,7 @@ module.exports = class Post {
         this.bookmarkingUsersIds = bookmarkingUsersIds;
         this.likingUsersIds = likingUsersIds;
         this.commentsCount = commentsCount;
+        this.bookmarksCount = bookmarksCount
     }
 
     async createPost() {
@@ -25,13 +26,18 @@ module.exports = class Post {
         this._id = insertedId;
     }
 
-    async updatePost(filter, update) {
+    async findAndUpdatePost(filter, update, projection) {
         const db = getDb();
-        const updatedPost = await db.collection('posts').findOneAndUpdate(filter, update, { returnDocument: 'after' });
+        const updatedPost = await db.collection('posts').findOneAndUpdate(filter, update, { projection, returnDocument: 'after' });
         if (update.imagesUrls) {
             updateImages(this.imagesUrls, updatedPost.imagesUrls);
         }
         return updatedPost;
+    }
+
+    updatePost(filter, update) {
+        const db = getDb();
+        return db.collection('posts').updateOne(filter, update);
     }
 
     static updatePosts(filter, update) {
@@ -39,13 +45,8 @@ module.exports = class Post {
         return db.collection('posts').updateMany(filter, update);
     }
 
-    static async getPosts(filter, userId = null, aggregate = false) {
+    static async getPostsInfo(filter, userId) {
         const db = getDb();
-
-        if (!aggregate) {
-            return db.collection('posts').find(filter);
-        }
-
         const posts = await db.collection('posts').aggregate([
             {
                 $match: filter
@@ -91,13 +92,13 @@ module.exports = class Post {
         return { posts, lastPostId };
     }
 
-    static async getPost(filter, aggregate = false) {
+    static getPosts(filter, projection) {
         const db = getDb();
+        return db.collection('posts').find(filter).project(projection);
+    }
 
-        if (!aggregate) {
-            return db.collection('posts').findOne(filter);
-        }
-
+    static async getPostInfo(filter) {
+        const db = getDb();
         const resultPost = await db.collection('posts').aggregate([
             {
                 $match: filter
@@ -136,6 +137,11 @@ module.exports = class Post {
         return resultPost ? resultPost[0] : null;
     }
 
+    static getPost(filter, projection) {
+        const db = getDb();
+        return db.collection('posts').findOne(filter, projection);
+    }
+
     async deletePost(filter) {
         const db = getDb();
         const { imagesUrls } = this, commentsFilter = { postId: this._id };
@@ -148,7 +154,7 @@ module.exports = class Post {
 
     static async deletePosts(filter) {
         const db = getDb();
-        const posts = await this.getPosts(filter).project({ imagesUrls: 1, likingUsersIds: 1, bookmarkingUsersIds: 1 });
+        const posts = await Post.getPosts(filter, { imagesUrls: 1, likingUsersIds: 1, bookmarkingUsersIds: 1 });
         const likingUsersIds = [], bookmarkingUsersIds = [], imagesUrls = [], postsIds = [];
 
         posts.forEach(post => {
@@ -166,22 +172,22 @@ module.exports = class Post {
 
     addLike(userId) {
         const filter = { _id: this._id }, update = { $inc: { likes: 1 }, $push: { likingUsersIds: userId } };
-        return this.updatePost(filter, update);
+        return this.findAndUpdatePost(filter, update, { likes: 1 });
     }
 
     removeLike(userId) {
         const filter = { _id: this._id }, update = { $inc: { likes: -1 }, $pull: { likingUsersIds: userId } };
-        return this.updatePost(filter, update);
+        return this.findAndUpdatePost(filter, update, { likes: 1 });
     }
 
     addBookmark(userId) {
-        const filter = { _id: this._id }, update = { $push: { bookmarkingUsersIds: userId } };
-        return this.updatePost(filter, update);
+        const filter = { _id: this._id }, update = { $push: { bookmarkingUsersIds: userId }, $inc: { bookmarksCount: 1 } };
+        return this.findAndUpdatePost(filter, update, { bookmarksCount: 1 });
     }
 
     removeBookmark(userId) {
-        const filter = { _id: this._id }, update = { $pull: { bookmarkingUsersIds: userId } };
-        return this.updatePost(filter, update);
+        const filter = { _id: this._id }, update = { $pull: { bookmarkingUsersIds: userId }, $inc: { bookmarksCount: -1 } };
+        return this.findAndUpdatePost(filter, update, { bookmarksCount: 1 });
     }
 
     removePostFromBookmarks() {
