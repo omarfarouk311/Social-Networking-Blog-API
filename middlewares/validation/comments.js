@@ -7,7 +7,7 @@ exports.checkCommentExistence = async (req, res, next) => {
     const { commentId, postId } = req.params;
 
     try {
-        const comment = await Comment.getcomment({ postId, _id: commentId }).project({ _id: 1 });
+        const comment = await Comment.getcomment({ postId, _id: commentId }, { _id: 1 });
 
         if (!comment) {
             const err = new Error('Comment not found');

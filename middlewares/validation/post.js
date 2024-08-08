@@ -1,12 +1,13 @@
 const Post = require('../../models/post');
 const { ObjectId } = require('mongodb');
-const { checkExact, body, validationResult, query, param } = require('express-validator');
+const { checkExact, body, validationResult, query, param, buildCheckFunction } = require('express-validator');
+const checkPostId = buildCheckFunction(['body', 'params']);
 
 exports.checkPostExistence = async (req, res, next) => {
-    const { postId } = req.params;
+    const { postId } = req.params || req.body;
 
     try {
-        const post = await Post.getPost({ _id: postId }).project({ _id: 1 });
+        const post = await Post.getPost({ _id: postId }, { _id: 1 });
 
         if (!post) {
             const err = new Error('Post not found');
@@ -26,7 +27,7 @@ const validateStructure = checkExact([], {
     message: 'Bad request, request structure is invalid because too many fields are passed'
 });
 
-const validatePostId = () => param('postId')
+const validatePostId = () => checkPostId('postId')
     .notEmpty()
     .withMessage("postId can't be empty")
     .isString()
