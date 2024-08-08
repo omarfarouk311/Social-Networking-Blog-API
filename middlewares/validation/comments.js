@@ -1,6 +1,6 @@
 const Comment = require('../../models/comment');
 const { ObjectId } = require('mongodb');
-const { checkExact, body, param } = require('express-validator');
+const { body, param } = require('express-validator');
 const { validatePostId } = require('./post');
 
 exports.checkCommentExistence = async (req, res, next) => {
@@ -22,10 +22,6 @@ exports.checkCommentExistence = async (req, res, next) => {
         return next(err);
     }
 };
-
-const validateStructure = checkExact([], {
-    message: 'Bad request, request structure is invalid because too many fields are passed',
-});
 
 const validateCommentId = () => param('commentId')
     .notEmpty()
@@ -59,20 +55,8 @@ exports.validateCommentCreation = [
         .isMongoId()
         .withMessage('parentId must be a valid MongoDb ObjectId')
         .customSanitizer(parentId => ObjectId.createFromHexString(parentId))
-    ,
-    validateStructure
 ];
 
-exports.validateRouteParams = [
-    validateCommentId()
-    ,
-    validatePostId
-];
+exports.validateRouteParams = [validateCommentId(), validatePostId];
 
-exports.validateCommentUpdating = [
-    ...exports.validateRouteParams
-    ,
-    validateCommentContent()
-    ,
-    validateStructure
-];
+exports.validateCommentUpdating = [...exports.validateRouteParams, validateCommentContent()];

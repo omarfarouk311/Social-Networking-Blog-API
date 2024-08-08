@@ -1,9 +1,5 @@
-const { checkExact, body } = require('express-validator');
+const { body } = require('express-validator');
 const User = require('../../models/user');
-
-const validateStructure = checkExact([], {
-    message: 'Bad request, request structure is invalid because too many fields are passed'
-});
 
 const validateUserName = () => body('name')
     .notEmpty()
@@ -58,20 +54,17 @@ exports.validatePassword = [
 const validateUserCreation = [
     validateUserName(),
     validateUserBio(),
-    validateUserLocation(),
-    validateStructure
+    validateUserLocation()
 ];
 
 exports.validateSignup = [
     validateEmail(),
     ...exports.validatePassword,
-    ...validateUserCreation,
-    validateStructure
+    ...validateUserCreation
 ];
 
 exports.validateUserUpdate = [
     validateUserName().optional(),
     validateUserBio().optional(),
-    validateUserLocation().optional(),
-    validateStructure
+    validateUserLocation().optional()
 ];
