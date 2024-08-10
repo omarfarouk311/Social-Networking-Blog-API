@@ -72,9 +72,9 @@ exports.logIn = async (req, res, next) => {
         const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '15m' });
         const refreshToken = jwt.sign({ userId: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
 
-        //save userId in the whitelist with auto deletion after 10m
         const db = getDb();
-        await db.collection('tokens').insertOne({ userId: user._id, creationDate: new Date(Date.now()).toISOString() });
+        await Promise.all[db.collection('tokens').insertOne({ userId: user._id, token, creationDate: new Date(Date.now()).toISOString() }),
+            db.collection('refresh tokens').insertOne({ userId: user._id, refreshToken, creationDate: new Date(Date.now()).toISOString() })];
 
         crypto.randomBytes(64, (err, buf) => {
             if (err) throw err;
@@ -109,7 +109,7 @@ exports.logOut = async (req, res, next) => {
 
     try {
         const db = getDb();
-        await db.collection('tokens').deleteOne({ _id: userId });
+        await Promise.all[db.collection('tokens').deleteOne({ userId }), db.collection('refresh tokens').deleteOne({ userId })];
         return res
             .status(200)
             .clearCookie('refreshToken', {
@@ -131,6 +131,66 @@ exports.logOut = async (req, res, next) => {
     }
 };
 
+exports.refreshToken = async (req, res, next) => {
+    const { oldRefreshToken } = req.signedCookies;
+
+    try {
+        if (!oldRefreshToken) {
+            const err = new Error('invalid token');
+            err.statusCode = 401;
+            throw err;
+        }
+
+        const decoded = jwt.verify(oldRefreshToken, process.env.REFRESH_TOKEN_SECRET);
+        const { userId } = decoded;
+        const db = getDb();
+        const found = await db.collection('refresh tokens').findOne({ userId, oldRefreshToken }, { _id: 1 });
+        if (!found) {
+            const err = new Error('invalid token');
+            err.statusCode = 401;
+            throw err;
+        }
+
+        const token = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '15m' });
+        const refreshToken = jwt.sign({ userId }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+
+        await Promise.all([db.collection('tokens').insertOne({ userId, token, creationDate: new Date(Date.now()).toISOString() }),
+        db.collection('refresh tokens').updateOne(
+            { userId, oldRefreshToken },
+            { userId, refreshToken, creationDate: new Date(Date.now()).toISOString() },
+        )]);
+
+        crypto.randomBytes(64, (err, buf) => {
+            if (err) throw err;
+            const csrfToken = buf.toString('hex');
+            return res
+                .status(200)
+                .cookie('refreshToken', refreshToken, {
+                    httpOnly: true,
+                    sameSite: 'None',
+                    signed: true,
+                    secure: true
+                })
+                .cookie('csrfToken', csrfToken, {
+                    httpOnly: false,
+                    sameSite: 'None',
+                    signed: true,
+                    secure: true
+                })
+                .json({
+                    message: 'Token refreshed successfully',
+                    token
+                });
+        });
+    }
+    catch (err) {
+        if (err.name === 'TokenExpiredError' || err.name === 'JsonWebTokenError') {
+            err.statusCode = 401;
+        }
+        return next(err);
+    }
+};
+
 exports.authenticateUser = async (req, res, next) => {
     let token = req.get('Authorization');
     if (!token) {
@@ -143,7 +203,7 @@ exports.authenticateUser = async (req, res, next) => {
         //check if the token is in the whitelist (not logged out)
         //TTL indexing
         const db = getDb();
-        const found = await db.collection('tokens').findOne({ userId: decoded.userId });
+        const found = await db.collection('tokens').findOne({ token }, { _id: 1 });
         if (!found) {
             const err = new Error('Invalid token');
             err.statusCode = 401;
