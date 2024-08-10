@@ -1,5 +1,6 @@
 const User = require('../models/user');
 const Post = require('../models/post');
+const { getDb } = require('../util/database');
 
 exports.updatePostLikes = async (req, res, next) => {
     const { userId, post, body } = req;
@@ -7,11 +8,25 @@ exports.updatePostLikes = async (req, res, next) => {
     let updatedPost;
 
     try {
-        if (body.value === 1) updatedPost = await user.likePost(post)[1];
-        else updatedPost = await user.unlikePost(post)[1];
+        if (body.value === 1) {
+            updatedPost = await user.likePost(post);
+            if (!updatedPost) {
+                const err = new Error('Post already liked');
+                err.statusCode = 409;
+                throw err;
+            }
+        }
+        else {
+            updatedPost = await user.unlikePost(post);
+            if (!updatedPost) {
+                const err = new Error("Post isn't liked");
+                err.statusCode = 409;
+                throw err;
+            }
+        }
 
         return res.status(200).json({
-            message: 'Likes updated successfully',
+            message: 'Post Likes updated successfully',
             ...updatedPost
         });
     }
@@ -26,8 +41,22 @@ exports.updateCommentLikes = async (req, res, next) => {
     let updatedComment;
 
     try {
-        if (body.value === 1) updatedComment = await user.likeComment(comment)[1];
-        else updatedComment = await user.unlikeComment(comment)[1];
+        if (body.value === 1) {
+            updatedComment = await user.likeComment(comment);
+            if (!updatedComment) {
+                const err = new Error('Comment already liked');
+                err.statusCode = 409;
+                throw err;
+            }
+        }
+        else {
+            updatedComment = await user.unlikeComment(comment);
+            if (!updatedComment) {
+                const err = new Error("Comment isn't liked");
+                err.statusCode = 409;
+                throw err;
+            }
+        }
 
         return res.status(200).json({
             message: 'Likes updated successfully',
@@ -40,15 +69,19 @@ exports.updateCommentLikes = async (req, res, next) => {
 };
 
 exports.addBookmark = async (req, res, next) => {
-    const { user, post } = req;
+    const { userId, post } = req;
+    const user = new User({ _id: userId });
 
     try {
-        if (user.bookmarksIds.some(id => id === post._id)) {
-            return res.status(200).json({ message: 'Post already bookmarked' });
+        const result = await user.addBookmark(post);
+        if (!result) {
+            const err = new Error('Post already bookmarked');
+            err.statusCode = 409;
+            throw err;
         }
-
-        await user.addBookmark(post);
-        return res.status(200).json({ message: 'Post added to bookmarks successfully' });
+        return res.status(200).json({
+            message: 'Post added to bookmarks successfully',
+        });
     }
     catch (err) {
         return next(err);
@@ -56,13 +89,16 @@ exports.addBookmark = async (req, res, next) => {
 };
 
 exports.removeBookmark = async (req, res, next) => {
-    const { user, post } = req;
+    const { userId, post } = req;
+    const user = new User({ _id: userId });
 
     try {
-        if (!user.bookmarksIds.some(id => id === post._id)) {
-            return res.status(404).json({ message: 'Post not found in bookmarks' });
+        const result = await user.removeBookmark(post);
+        if (!result) {
+            const err = new Error("Post isn't bookmarked");
+            err.statusCode = 409;
+            throw err;
         }
-        await user.removeBookmark(post);
         return res.status(204).json({ message: 'Post removed from bookmarks successfully' });
     }
     catch (err) {
@@ -72,14 +108,14 @@ exports.removeBookmark = async (req, res, next) => {
 
 exports.getBookmarks = async (req, res, next) => {
     const { userId } = req, { lastId } = req.query;
-    const bookmarksIds = User.getUser({ _id: userId }).project({ bookmarksIds: 1, _id: 0 });
+    const bookmarksIds = User.getUser({ _id: userId }, { bookmarksIds: 1, _id: 0 });
     const filter = { _id: { $in: bookmarksIds } };
     if (lastId) {
         filter._id.$lt = lastId;
     }
 
     try {
-        const result = await Post.getPosts(filter, userId, true);
+        const result = await Post.getPostsInfo(filter, userId);
         return res.status(200).json({
             message: 'Bookmarks fetched successfully',
             ...result
@@ -92,14 +128,14 @@ exports.getBookmarks = async (req, res, next) => {
 
 exports.getUserLikes = async (req, res, next) => {
     const { userId } = req, { lastId } = req.query;
-    const likedPostsIds = User.getUser({ _id: userId }).project({ likedPostsIds: 1, _id: 0 });
+    const likedPostsIds = User.getUser({ _id: userId }, { likedPostsIds: 1, _id: 0 });
     const filter = { _id: { $in: likedPostsIds } };
     if (lastId) {
         filter._id.$lt = lastId;
     }
 
     try {
-        const result = await Post.getPosts(filter, userId, true);
+        const result = await Post.getPostsInfo(filter, userId);
         return res.status(200).json({
             message: 'User liked posts fetched successfully',
             ...result
@@ -118,7 +154,7 @@ exports.getUserPosts = async (req, res, next) => {
     }
 
     try {
-        const result = await Post.getPosts(filter, userId, true);
+        const result = await Post.getPostsInfo(filter, userId);
         return res.status(200).json({
             message: 'User posts fetched successfully',
             ...result
@@ -133,7 +169,7 @@ exports.getUserProfile = async (req, res, next) => {
     const { userId } = req;
 
     try {
-        const userProfile = await User.getUser({ _id: userId }, true);
+        const userProfile = await User.getUserInfo({ _id: userId });
 
         if (userProfile) {
             return res.status(200).json({
@@ -152,14 +188,16 @@ exports.getUserProfile = async (req, res, next) => {
     }
 };
 
-exports.deleteUser = async (req, res, next) => {
-    const { userId } = req;
+exports.updateFollowers = async (req, res, next) => {
+    const { userId } = req, { followedId, type } = req.body;
     const user = new User({ _id: userId });
 
     try {
-        await user.deleteUser();
-        return res.status(204).json({
-            message: 'User deleted successfully'
+        const [userFollowingCount, followedFollowersCount] = await user.updateFollowers(followedId, type);
+        return res.status(200).json({
+            message: 'followers updated successfully',
+            userFollowingCount,
+            followedFollowersCount
         });
     }
     catch (err) {
@@ -167,6 +205,66 @@ exports.deleteUser = async (req, res, next) => {
     }
 };
 
-exports.updateFollowers = async (req, res, next) => {
+exports.deleteUser = async (req, res, next) => {
+    const { userId } = req;
 
+    try {
+        const projection = {
+            imageUrl: 1,
+            followingIds: 1,
+            followersIds: 1,
+            bookmarksIds: 1,
+            likedPostsIds: 1,
+            likedCommentsIds: 1
+        };
+        const user = new User(await User.getUser({ _id: userId }, projection));
+        const db = getDb();
+        await Promise.all[user.deleteUser(), db.collection('tokens').deleteOne({ userId }),
+            db.collection('refresh tokens').deleteOne({ userId })];
+
+        return res
+            .status(204)
+            .clearCookie('refreshToken', {
+                httpOnly: true,
+                sameSite: 'None',
+                signed: true,
+                secure: true
+            })
+            .clearCookie('csrfToken', {
+                httpOnly: false,
+                sameSite: 'None',
+                signed: true,
+                secure: true
+            })
+            .json({
+                message: 'User deleted successfully'
+            });
+    }
+    catch (err) {
+        return next(err);
+    }
+};
+
+exports.updateUser = async (req, res, next) => {
+    const { body, userId } = req;
+    if (!Object.keys(body).length) {
+        return res.status(400).json({ message: 'Bad request' });
+    }
+
+    const user = new User({ _id: userId });
+    try {
+        const projection = { _id: 0 };
+        for (const key in body) {
+            projection[key] = 1;
+        }
+
+        const updatedUser = await user.findAndUpdateUser({ _id: userId }, { $set: body }, projection);
+        return res.status(200).json({
+            message: 'User data updated successfully',
+            ...updatedUser
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
 };

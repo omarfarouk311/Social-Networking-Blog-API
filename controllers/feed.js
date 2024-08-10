@@ -1,14 +1,14 @@
 const Post = require('../models/post');
 
 exports.getPosts = async (req, res, next) => {
-    const { lastId } = req.query, { userId } = req;;
+    const { lastId } = req.query, { userId } = req;
     let filter = {};
     if (lastId) {
         filter._id = { $lt: lastId };
     }
 
     try {
-        const result = await Post.getPosts(filter, userId, true);
+        const result = await Post.getPostsInfo(filter, userId, true);
         return res.status(200).json({
             message: 'Posts fetched successfully',
             ...result
@@ -22,7 +22,7 @@ exports.getPosts = async (req, res, next) => {
 exports.getPost = async (req, res, next) => {
     const { postId } = req.params;
     try {
-        const post = await Post.getPost({ _id: postId }, true);
+        const post = await Post.getPostInfo({ _id: postId }, true);
         if (!post) {
             return res.status(404).json({
                 message: 'Post not found'
@@ -50,7 +50,8 @@ exports.createPost = async (req, res, next) => {
         likes: 0,
         bookmarkingUsersIds: [],
         likingUsersIds: [],
-        commentsCount: 0
+        commentsCount: 0,
+        bookmarksCount: 0
     });
 
     try {
@@ -105,7 +106,12 @@ exports.updatePost = async (req, res, next) => {
             req.files.forEach(file => body.imagesUrls.push(file.path));
         }
 
-        const updatedPost = await post.updatePost({ _id: post._id }, { $set: body });
+        const projection = { _id: 0 };
+        for (const key in body) {
+            projection[key] = 1;
+        }
+
+        const updatedPost = await post.findAndUpdatePost({ _id: post._id }, { $set: body }, projection);
         return res.status(200).json({
             message: 'Post updated successfully',
             ...updatedPost

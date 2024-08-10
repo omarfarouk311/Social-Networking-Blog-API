@@ -9,7 +9,7 @@ exports.getComments = async (req, res, next) => {
     }
 
     try {
-        const result = await Comment.getComments(filter, userId, true);
+        const result = await Comment.getCommentsInfo(filter, userId);
         return res.status(200).json({
             message: 'Comments fetched successfully',
             ...result
@@ -21,19 +21,24 @@ exports.getComments = async (req, res, next) => {
 };
 
 exports.createComment = async (req, res, next) => {
-    const { body, userId } = req, { postId } = req.params;
-    const comment = new Comment({
-        ...body,
-        creationDate: new Date(Date.now()).toISOString(),
-        creatorId: userId,
-        postId,
-        likes: 0,
-        repliesCount: 0,
-        likingUsersIds: []
-    });
-    const post = new Post({ _id: postId });
+    const { userId } = req, { postId } = req.params, { content, parentId } = req.body;
 
     try {
+        const parentsIds = await Comment.getComment({ _id: parentId }, { parentsIds: 1, _id: 0 })
+        parentsIds.push(parentId);
+
+        const comment = new Comment({
+            content,
+            parentsIds,
+            creationDate: new Date(Date.now()).toISOString(),
+            creatorId: userId,
+            postId,
+            likes: 0,
+            repliesCount: 0,
+            likingUsersIds: []
+        });
+        const post = new Post({ _id: postId });
+
         await comment.createComment(post);
         return res.status(201).json({
             message: 'Comment created successfully',
@@ -65,7 +70,12 @@ exports.updateComment = async (req, res, next) => {
     }
 
     try {
-        const updatedComment = await comment.updateComment({ _id: comment._id }, { $set: body });
+        const projection = { _id: 0 };
+        for (const key in body) {
+            projection[key] = 1;
+        }
+
+        const updatedComment = await comment.findAndUpdateComment({ _id: comment._id }, { $set: body }, projection);
         return res.status(200).json({
             message: 'Post updated successfully',
             ...updatedComment
