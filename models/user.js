@@ -5,7 +5,7 @@ const { deleteImages, updateImages } = require('../util/images.js');
 
 module.exports = class User {
     constructor({ _id, email, password, name, imageUrl, followingIds, followersIds, bookmarksIds, likedPostsIds, bio, location,
-        creationDate, followingCount, followersCount }) {
+        creationDate, followingCount, followersCount, likedCommentsIds }) {
         this._id = _id;
         this.email = email;
         this.password = password;
@@ -51,24 +51,33 @@ module.exports = class User {
     async deleteUser() {
         const db = getDb();
         const { imageUrl } = this;
-        const promises = [];
+        const promises = [Post.deletePosts({ creatorId: this._id }), Comment.deleteComments({ creatorId: this._id })];
 
-        promises.push(Post.deletePosts({ creatorId: this._id }));
         promises.push(Post.updatePosts({ _id: { $in: this.likedPostsIds } }, {
             $inc: { likes: -1 },
             $pull: { likingUsersIds: this._id }
         }));
+
         promises.push(Post.updatePosts({ _id: { $in: this.bookmarksIds } }, { $pull: { bookmarkingUsersIds: this._id } }));
-        promises.push(Comment.deleteComments({ creatorId: this._id }));
+
         promises.push(Comment.updateComments({ _id: { $in: this.likedCommentsIds } }, {
             $inc: { likes: -1 },
             $pull: { likingUsersIds: this._id }
         }));
-        promises.push(User.updateUsers({ _id: { $in: this.followersIds } }, { $pull: { followingIds: this._id } }));
-        promises.push(User.updateUsers({ _id: { $in: this.followingIds } }, { $pull: { followersIds: this._id } }));
-        promises.push(db.collection('users').deleteOne({ _id: this._id }));
-        await Promise.all(promises);
 
+        promises.push(User.updateUsers({ _id: { $in: this.followersIds } }, {
+            $pull: { followingIds: this._id },
+            $inc: { followingIds: -1 }
+        }));
+
+        promises.push(User.updateUsers({ _id: { $in: this.followingIds } }, {
+            $pull: { followersIds: this._id },
+            $inc: { followersIds: -1 }
+        }));
+
+        promises.push(db.collection('users').deleteOne({ _id: this._id }));
+
+        await Promise.all(promises);
         deleteImages([imageUrl]);
     }
 
