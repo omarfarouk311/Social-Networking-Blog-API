@@ -8,17 +8,24 @@ const feedRouter = require('./routes/feed');
 const bookmarksRouter = require('./routes/bookmarks');
 const userRouter = require('./routes/user');
 const { authenticateUser } = require('./middlewares/auth');
+const cookieParser = require('cookie-parser');
+const { csrfProtection } = require('./controllers/auth');
 
 const app = express();
+
+app.use(cors({
+    origin: [process.env.ORIGIN],
+    allowedHeaders: ['Content-Type', 'Authorization', 'CSRF-TOKEN'],
+    credentials: true
+}));
+
+app.use(cookieParser(process.env.COOKIE_SECRET));
+
+app.use(csrfProtection());
 
 app.use(express.json());
 
 app.use('/images', express.static(join(__dirname, 'images')));
-
-app.use(cors({
-    origin: [process.env.ORIGIN],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
 
 app.use('/feed', feedRouter);
 
