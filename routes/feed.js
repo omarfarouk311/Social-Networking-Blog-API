@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { notAllowed } = require('../middlewares/errors');
+const { notAllowed, notFound } = require('../middlewares/errors');
 const feedController = require('../controllers/feed');
 const userController = require('../controllers/user');
 const commentsController = require('../controllers/comments');
@@ -9,17 +9,14 @@ const { checkCommentExistence, validateCommentCreation, validateCommentUpdating,
     validateRouteParams } = require('../middlewares/validation/comments');
 const { authorizePostDeletion, authorizePostUpdating } = require('../middlewares/authorization/post');
 const { authorizeCommentDeletion, authorizeCommentUpdating } = require('../middlewares/authorization/comment');
-const { authenticateUser } = require('../middlewares/auth');
 const upload = require('../util/multer configurations');
 const router = Router();
 
 router.route('/')
     .get(validateQueryParams, validateStructure, handleValidationErrors, feedController.getPosts)
-    .post(authenticateUser, validatePostCreation, validateStructure, handleValidationErrors, upload.array('images', 15),
+    .post(validatePostCreation, validateStructure, handleValidationErrors, upload.array('images', 15),
         feedController.createPost)
     .all(notAllowed);
-
-router.use(authenticateUser);
 
 router.route('/:postId')
     .get(validatePostId, validateStructure, handleValidationErrors, feedController.getPost)
@@ -43,5 +40,7 @@ router.route('/:postId/:commentId')
         userController.updateCommentLikes)
     .delete(validateRouteParams, validateStructure, handleValidationErrors, authorizeCommentDeletion, commentsController.deleteComment)
     .all(notAllowed);
+
+router.all('*', notFound);
 
 module.exports = router;

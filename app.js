@@ -6,8 +6,8 @@ const { join } = require('path');
 const { notFound, errorHandlingMiddleware } = require('./middlewares/errors');
 const feedRouter = require('./routes/feed');
 const bookmarksRouter = require('./routes/bookmarks');
-const userRouter = require('./routes/user');
-const { authenticateUser } = require('./middlewares/auth');
+const profileRouter = require('./routes/profile');
+const { authenticateUser } = require('./controllers/auth');
 const cookieParser = require('cookie-parser');
 const { csrfProtection } = require('./controllers/auth');
 
@@ -27,13 +27,13 @@ app.use(express.json());
 
 app.use('/images', express.static(join(__dirname, 'images')));
 
-app.use('/feed', feedRouter);
+app.use('/feed', authenticateUser, feedRouter);
 
 app.use('/bookmarks', authenticateUser, bookmarksRouter);
 
-app.use('/profile', authenticateUser, userRouter);
+app.use('/profile', authenticateUser, profileRouter);
 
-app.use(notFound);
+app.all('*', notFound);
 
 app.use(errorHandlingMiddleware);
 
