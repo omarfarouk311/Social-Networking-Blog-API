@@ -65,9 +65,6 @@ exports.deleteComment = async (req, res, next) => {
 
 exports.updateComment = async (req, res, next) => {
     const { body, comment } = req;
-    if (!Object.keys(body).length) {
-        return res.status(400).json({ message: 'Bad request' });
-    }
 
     try {
         const projection = { _id: 0 };
@@ -79,6 +76,21 @@ exports.updateComment = async (req, res, next) => {
         return res.status(200).json({
             message: 'Post updated successfully',
             ...updatedComment
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
+};
+
+exports.getCommentsLikers = async (req, res, next) => {
+    const { comment } = req, { page = 0 } = req.query;
+
+    try {
+        const users = await comment.getCommentLikers(page);
+        return res.status(200).json({
+            message: 'Post likers fetched successfully',
+            users
         });
     }
     catch (err) {

@@ -90,6 +90,37 @@ module.exports = class Comment {
         return db.collection('comments').findOne(filter, projection);
     }
 
+    async getCommentLikers(page) {
+        const db = getDb();
+        const result = await db.collection('comments').aggregate([
+            {
+                $match: { _id: this._id }
+            },
+            {
+                $project: {
+                    likingUsersIds: { $slice: [`$likingUsersIds`, 20 * page, 20] },
+                    _id: 0
+                }
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'likingUsersIds',
+                    foreignField: '_id',
+                    as: 'users',
+                    pipeline: [
+                        { $project: { name: 1, imageUrl: 1 } }
+                    ]
+                }
+            },
+            {
+                $project: { likingUsersIds: 0 }
+            }
+        ]).toArray();
+
+        return result[0].users;
+    }
+
     async deleteComment(filter, post) {
         const db = getDb();
         const commentId = await db.collection('comments').findOneAndDelete(filter, { _id: 1 });
@@ -129,7 +160,14 @@ module.exports = class Comment {
     }
 
     addLike(userId) {
-        const filter = { _id: this._id }, update = { $inc: { likes: 1 }, $push: { likingUsersIds: userId } };
+        const filter = { _id: this._id }, update = {
+            $inc: { likes: 1 }, $push: {
+                likingUsersIds: {
+                    $each: [userId],
+                    $position: 0
+                }
+            }
+        };
         return this.findAndUpdateComment(filter, update, { likes: 1 });
     }
 
