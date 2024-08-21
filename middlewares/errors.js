@@ -11,14 +11,18 @@ exports.notFound = (req, res, next) => {
 };
 
 exports.errorHandlingMiddleware = (err, req, res, next) => {
+    if (res.headersSent) {
+        return next(err)
+    }
+
+    console.error(err);
+
     if (Array.isArray(err)) {
         return res.status(422).send({
             message: 'Invalid data',
             errors: err
         });
     }
-
-    console.error(err);
     const statusCode = err.statusCode || 500;
     return res.status(statusCode).json({ message: err.message || err.msg });
 };
