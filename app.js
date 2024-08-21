@@ -21,7 +21,7 @@ app.use(cors({
 
 app.use(cookieParser(process.env.COOKIE_SECRET));
 
-app.use(csrfProtection());
+app.use(csrfProtection);
 
 app.use(express.json());
 
