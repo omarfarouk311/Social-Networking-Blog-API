@@ -1,5 +1,25 @@
-const { body } = require('express-validator');
+const { body, query } = require('express-validator');
 const User = require('../../models/user');
+
+exports.checkUserExistence = async (req, res, next) => {
+    const { userId } = req.params;
+
+    try {
+        const user = await User.getUser({ _id: userId }, { _id: 1 });
+
+        if (!user) {
+            const err = new Error('User not found');
+            err.statusCode = 404;
+            throw err;
+        }
+
+        req.user = new User(user);
+        return next();
+    }
+    catch (err) {
+        return next(err);
+    }
+};
 
 const validateUserName = () => body('name')
     .notEmpty()
@@ -41,17 +61,16 @@ const validateEmail = () => body('email')
         return true;
     });
 
-exports.validatePassword = [
-    body('password')
-        .isStrongPassword()
-        .withMessage('Password length must be atleast 8 and contains numbers, symbols, uppercase and lowercase letters')
-    ,
-    body('confirmationPassword')
-        .custom((value, { location }) => value === location.password)
-        .withMessage('Password must match confirmation password')
-];
+const validatePassword = () => body('password')
+    .isStrongPassword()
+    .withMessage('Password length must be atleast 8 and contains numbers, symbols, uppercase and lowercase letters');
 
-const validateUserCreation = [
+
+const validateConfirmationPassword = () => body('confirmationPassword')
+    .custom((value, { location }) => value === location.password)
+    .withMessage('Password must match confirmation password');
+
+exports.validateUserCreation = [
     validateUserName(),
     validateUserBio(),
     validateUserLocation()
@@ -59,12 +78,37 @@ const validateUserCreation = [
 
 exports.validateSignup = [
     validateEmail(),
-    ...exports.validatePassword,
-    ...validateUserCreation
+    validatePassword,
+    validateConfirmationPassword(),
+    ...exports.validateUserCreation
 ];
 
-exports.validateUserUpdate = [
-    validateUserName().optional(),
-    validateUserBio().optional(),
-    validateUserLocation().optional()
+exports.validateLogin = [
+    validateEmail(),
+    validatePassword()
+];
+
+exports.validatePage = query('page', 'Invalid pagination page, it must be 0 or more')
+    .optional()
+    .notEmpty()
+    .isInt()
+    .customSanitizer(page => parseInt(page));
+
+exports.validateFollowAction = [
+    body('followerId')
+        .notEmpty()
+        .withMessage("followerId can't be empty")
+        .isString()
+        .withMessage("followerId must be a string")
+        .trim()
+        .isMongoId()
+        .withMessage('followerId must be a valid MongoDb ObjectId')
+        .customSanitizer(postId => ObjectId.createFromHexString(postId))
+    ,
+    body('action')
+        .notEmpty()
+        .withMessage('Action must be passed')
+        .isInt({ allow_leading_zeroes: false, max: 1, min: -1 })
+        .withMessage('Action value must be 1 or -1')
+        .customSanitizer(action => parseInt(action))
 ];

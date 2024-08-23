@@ -133,49 +133,150 @@ module.exports = class User {
             }
         ]).toArray();
 
-        return result ? result[0] : null;
+        return result.length ? result[0] : null;
     }
 
     static getUser(filter, projection) {
         const db = getDb();
-        return db.collection.findOne(filter, projection);
+        return db.collection('users').findOne(filter, projection);
     }
 
-    updateFollowers(followedId, type) {
-        let promise1, promise2;
+    static async getUsersInfo(filter, field, page) {
+        const db = getDb();
+        const result = await db.collection('users').aggregate([
+            {
+                $match: filter
+            },
+            {
+                $project: {
+                    [field]: { $slice: [`$${field}`, 20 * page, 20] },
+                    _id: 0
+                }
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: `${field}`,
+                    foreignField: '_id',
+                    as: 'users',
+                    pipeline: [
+                        { $project: { name: 1, imageUrl: 1 } }
+                    ]
+                }
+            },
+            {
+                $project: { [field]: 0 }
+            }
+        ]).toArray();
 
-        if (type === 1) {
-            promise1 = this.findAndUpdateUser(
-                { _id: this._id },
-                { $push: { followingIds: followedId }, $inc: { followingCount: 1 } },
-                { followingCount: 1, _id: 0 }
-            );
+        return result[0].users;
+    }
 
-            promise2 = this.findAndUpdateUser(
-                { _id: followedId },
-                { $push: { followersIds: this._id }, $inc: { followersCount: 1 } },
-                { followersCount: 1, _id: 0 }
-            );
-        }
-        else {
-            promise1 = this.findAndUpdateUser(
-                { _id: this._id },
-                { $pull: { followingIds: followedId }, $inc: { followingCount: -1 } },
-                { followingCount: 1, _id: 0 }
-            );
+    async getUserLikesIds(page) {
+        const db = getDb();
+        const result = await db.collection('users').aggregate([
+            {
+                $match: { _id: this._id }
+            },
+            {
+                $project: {
+                    likedPostsIds: { $slice: ['$likedPostsIds', 10 * page, 10] },
+                    _id: 0
+                }
+            },
+        ]).toArray();
 
-            promise2 = this.findAndUpdateUser(
-                { _id: followedId },
-                { $pull: { followersIds: this._id }, $inc: { followersCount: -1 } },
-                { followersCount: 1, _id: 0 }
-            );
-        }
+        return result[0].likedPostsIds;
+    }
+
+    async getUserBookmarks(page) {
+        const db = getDb();
+        const result = await db.collection('users').aggregate([
+            {
+                $match: { _id: this._id }
+            },
+            {
+                $project: {
+                    bookmarksIds: { $slice: ['$bookmarksIds', 10 * page, 10] },
+                    _id: 0
+                }
+            },
+        ]).toArray();
+
+        return result[0].bookmarksIds;
+    }
+
+    async followUser(followedId) {
+        const { modifiedCount } = await this.updateUser(
+            { _id: this._id },
+            {
+                $addToSet: {
+                    followingIds: {
+                        $each: [followedId],
+                        $position: 0
+                    }
+                }
+            }
+        );
+        if (!modifiedCount) return null;
+
+        const promise1 = this.findAndUpdateUser(
+            { _id: this._id },
+            {
+                $inc: { followingCount: 1 }
+            },
+            { followingCount: 1, _id: 0 }
+        );
+
+        const promise2 = this.findAndUpdateUser(
+            { _id: followedId },
+            {
+                $push: {
+                    followersIds: {
+                        $each: [this._id],
+                        $position: 0
+                    }
+                },
+                $inc: { followersCount: 1 }
+            },
+            { followersCount: 1, _id: 0 }
+        );
+
+        return Promise.all([promise1, promise2]);
+    }
+
+    async unfollowUser(followedId) {
+        const { modifiedCount } = this.updateUser(
+            { _id: this._id },
+            { $pull: { followingIds: followedId } },
+        );
+        if (!modifiedCount) return null;
+
+        const promise1 = this.findAndUpdateUser(
+            { _id: this._id },
+            { $inc: { followingCount: -1 } },
+            { followingCount: 1, _id: 0 }
+        )
+
+        const promise2 = this.findAndUpdateUser(
+            { _id: followedId },
+            { $pull: { followersIds: this._id }, $inc: { followersCount: -1 } },
+            { followersCount: 1, _id: 0 }
+        );
 
         return Promise.all([promise1, promise2]);
     }
 
     async addBookmark(post) {
-        const filter = { _id: this._id }, update = { $addToSet: { bookmarksIds: post._id } };
+        const filter = { _id: this._id }, update = {
+            $addToSet:
+            {
+                bookmarksIds: {
+                    $each: [post._id],
+                    $position: 0
+                }
+            }
+        };
         const { modifiedCount } = await this.updateUser(filter, update);
         if (!modifiedCount) return null;
         return post.addBookmark(this._id);
@@ -189,7 +290,14 @@ module.exports = class User {
     }
 
     async likePost(post) {
-        const filter = { _id: this._id }, update = { $addToSet: { likedPostsIds: post._id } };
+        const filter = { _id: this._id }, update = {
+            $addToSet: {
+                likedPostsIds: {
+                    $each: [post._id],
+                    $position: 0
+                }
+            }
+        };
         const { modifiedCount } = await this.updateUser(filter, update);
         if (!modifiedCount) return null;
         return post.addLike(this._id);
