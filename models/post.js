@@ -45,20 +45,16 @@ module.exports = class Post {
         return db.collection('posts').updateMany(filter, update);
     }
 
-    static async getPostsInfo(filter, userId) {
+    static async getPostsInfo(filter, userId, prepared = false) {
         const db = getDb();
+        const pipeline = [{ $match: filter }];
+
+        if (!prepared) {
+            pipeline.push({ $sort: { _id: -1 } }, { $limit: 10 });
+        }
+
         const posts = await db.collection('posts').aggregate([
-            {
-                $match: filter
-            },
-            {
-                $sort: {
-                    _id: -1
-                }
-            },
-            {
-                $limit: 10
-            },
+            ...pipeline,
             {
                 $lookup: {
                     from: 'users',
@@ -83,13 +79,18 @@ module.exports = class Post {
                     content: 0,
                     imagesUrls: 0,
                     liked: { $in: [userId, '$likingUsersIds'] },
-                    bookmarked: { $in: [userId, '$bookmarkingUsersIds'] }
+                    bookmarked: { $in: [userId, '$bookmarkingUsersIds'] },
+                    bookmarkingUsersIds: 0,
+                    likingUsersIds: 0,
                 }
             }
         ]).toArray();
 
-        const lastPostId = posts.length ? posts[posts.length - 1]['_id'].toString() : null;
-        return { posts, lastPostId };
+        if (!prepared) {
+            const lastPostId = posts.length ? posts[posts.length - 1]['_id'].toString() : null;
+            return { posts, lastPostId };
+        }
+        return posts;
     }
 
     static getPosts(filter, projection) {
@@ -97,11 +98,30 @@ module.exports = class Post {
         return db.collection('posts').find(filter).project(projection);
     }
 
-    static async getPostInfo(filter) {
+    static async getPostInfo(filter, userId) {
         const db = getDb();
         const resultPost = await db.collection('posts').aggregate([
             {
                 $match: filter
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'creatorId',
+                    foreignField: '_id',
+                    as: 'creator',
+                    pipeline: [
+                        {
+                            $project: {
+                                name: 1,
+                                imageUrl: 1
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                $unwind: '$creator'
             },
             {
                 $lookup: {
@@ -129,17 +149,52 @@ module.exports = class Post {
             },
             {
                 $project: {
-                    lastCommentId: { $arrayElemAt: ['comments._id', -1] }
+                    lastCommentId: { $arrayElemAt: ['comments._id', -1] },
+                    liked: { $in: [userId, '$likingUsersIds'] },
+                    bookmarked: { $in: [userId, '$bookmarkingUsersIds'] },
+                    bookmarkingUsersIds: 0,
+                    likingUsersIds: 0,
                 }
             }
         ]).toArray();
 
-        return resultPost ? resultPost[0] : null;
+        return resultPost.length ? resultPost[0] : null;
     }
 
     static getPost(filter, projection) {
         const db = getDb();
         return db.collection('posts').findOne(filter, projection);
+    }
+
+    async getPostLikers(page) {
+        const db = getDb();
+        const result = await db.collection('posts').aggregate([
+            {
+                $match: { _id: this._id }
+            },
+            {
+                $project: {
+                    likingUsersIds: { $slice: [`$likingUsersIds`, 20 * page, 20] },
+                    _id: 0
+                }
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'likingUsersIds',
+                    foreignField: '_id',
+                    as: 'users',
+                    pipeline: [
+                        { $project: { name: 1, imageUrl: 1 } }
+                    ]
+                }
+            },
+            {
+                $project: { likingUsersIds: 0 }
+            }
+        ]).toArray();
+
+        return result[0].users;
     }
 
     async deletePost(filter) {
@@ -171,23 +226,30 @@ module.exports = class Post {
     }
 
     addLike(userId) {
-        const filter = { _id: this._id }, update = { $inc: { likes: 1 }, $push: { likingUsersIds: userId } };
-        return this.findAndUpdatePost(filter, update, { likes: 1 });
+        const filter = { _id: this._id }, update = {
+            $inc: { likes: 1 }, $push: {
+                likingUsersIds: {
+                    $each: [userId],
+                    $position: 0
+                }
+            }
+        };
+        return this.findAndUpdatePost(filter, update, { likes: 1, _id: 0 });
     }
 
     removeLike(userId) {
         const filter = { _id: this._id }, update = { $inc: { likes: -1 }, $pull: { likingUsersIds: userId } };
-        return this.findAndUpdatePost(filter, update, { likes: 1 });
+        return this.findAndUpdatePost(filter, update, { likes: 1, _id: 0 });
     }
 
     addBookmark(userId) {
         const filter = { _id: this._id }, update = { $push: { bookmarkingUsersIds: userId }, $inc: { bookmarksCount: 1 } };
-        return this.findAndUpdatePost(filter, update, { bookmarksCount: 1 });
+        return this.findAndUpdatePost(filter, update, { bookmarksCount: 1, _id: 0 });
     }
 
     removeBookmark(userId) {
         const filter = { _id: this._id }, update = { $pull: { bookmarkingUsersIds: userId }, $inc: { bookmarksCount: -1 } };
-        return this.findAndUpdatePost(filter, update, { bookmarksCount: 1 });
+        return this.findAndUpdatePost(filter, update, { bookmarksCount: 1, _id: 0 });
     }
 
     removePostFromBookmarks() {

@@ -1,14 +1,23 @@
 const Post = require('../models/post');
+const User = require('../models/user');
 
 exports.getPosts = async (req, res, next) => {
-    const { lastId } = req.query, { userId } = req;
-    let filter = {};
+    const { lastId, tags, following } = req.query, { userId } = req;
+    const filter = {};
+
     if (lastId) {
         filter._id = { $lt: lastId };
     }
+    if (tags) {
+        filter.tags = { $all: tags }
+    }
+    if (following) {
+        const { followingIds } = await User.getUser({ _id: userId }, { _id: 0, followingIds: 1 });
+        filter.creatorId = { $in: followingIds }
+    }
 
     try {
-        const result = await Post.getPostsInfo(filter, userId, true);
+        const result = await Post.getPostsInfo(filter, userId);
         return res.status(200).json({
             message: 'Posts fetched successfully',
             ...result
@@ -20,9 +29,9 @@ exports.getPosts = async (req, res, next) => {
 };
 
 exports.getPost = async (req, res, next) => {
-    const { postId } = req.params;
+    const { postId } = req.params, { userId } = req;
     try {
-        const post = await Post.getPostInfo({ _id: postId }, true);
+        const post = await Post.getPostInfo({ _id: postId }, userId);
         if (!post) {
             return res.status(404).json({
                 message: 'Post not found'
@@ -41,18 +50,6 @@ exports.getPost = async (req, res, next) => {
 
 exports.createPost = async (req, res, next) => {
     const { body } = req.body, { userId } = req;
-    const post = new Post({
-        ...body,
-        creatorId: userId,
-        creationDate: new Date(Date.now()).toISOString(),
-        tags: [],
-        commentsIds: [],
-        likes: 0,
-        bookmarkingUsersIds: [],
-        likingUsersIds: [],
-        commentsCount: 0,
-        bookmarksCount: 0
-    });
 
     try {
         if (req.invalidFileType) {
@@ -61,12 +58,21 @@ exports.createPost = async (req, res, next) => {
             throw err;
         }
 
-        post.imagesUrls = [];
-        if (req.files) {
-            req.files.forEach(file => post.imagesUrls.push(file.path));
-        }
-        await post.createPost();
+        const imagesUrls = req.files ? req.files.map(file => file.path) : null;
+        const post = new Post({
+            ...body,
+            creatorId: userId,
+            creationDate: new Date(Date.now()).toISOString(),
+            commentsIds: [],
+            likes: 0,
+            bookmarkingUsersIds: [],
+            likingUsersIds: [],
+            commentsCount: 0,
+            bookmarksCount: 0,
+            imagesUrls
+        });
 
+        await post.createPost();
         return res.status(201).json({
             message: 'Post created successfully!',
             ...post
@@ -79,6 +85,7 @@ exports.createPost = async (req, res, next) => {
 
 exports.deletePost = async (req, res, next) => {
     const { post } = req;
+
     try {
         await post.deletePost({ _id: post._id });
         return res.status(204).json({ message: 'Post deleted successfully' });
@@ -90,9 +97,6 @@ exports.deletePost = async (req, res, next) => {
 
 exports.updatePost = async (req, res, next) => {
     const { post, body } = req;
-    if (!Object.keys(body).length) {
-        return res.status(400).json({ message: 'Bad request' });
-    }
 
     try {
         if (req.invalidFileType) {
@@ -100,10 +104,8 @@ exports.updatePost = async (req, res, next) => {
             err.statusCode = 422;
             throw err;
         }
-
-        body.imagesUrls = [];
         if (req.files) {
-            req.files.forEach(file => body.imagesUrls.push(file.path));
+            body.imagesUrls = req.files.map(file => file.path);
         }
 
         const projection = { _id: 0 };
@@ -115,6 +117,21 @@ exports.updatePost = async (req, res, next) => {
         return res.status(200).json({
             message: 'Post updated successfully',
             ...updatedPost
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
+};
+
+exports.getPostLikers = async (req, res, next) => {
+    const { post } = req, { page = 0 } = req.query;
+
+    try {
+        const users = await post.getPostLikers(page);
+        return res.status(200).json({
+            message: 'Post likers fetched successfully',
+            users
         });
     }
     catch (err) {

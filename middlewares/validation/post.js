@@ -68,43 +68,45 @@ exports.validatePostCreation = [
     validatePostTitle()
     ,
     validatePostContent()
+    ,
+    body('tags')
+        .isArray()
+        .withMessage("Post tags must be an array")
+        .custom(tags => tags.length)
+        .withMessage('Atleast one tag must be choosen')
 ];
 
 exports.validatePostUpdating = [
     validatePostId()
     ,
-    validatePostTitle().optional()
-    ,
-    validatePostContent().optional()
-    ,
-    body('tags')
-        .optional()
-        .isArray()
-        .withMessage("Post tags must be an array")
-    ,
-    body('tags.*')
-        .optional()
-        .isString()
-        .withMessage("Tags value must be a string")
+    ...exports.validatePostCreation
 ];
 
-exports.validateLikesUpdating = [
-    body('modifyLikes')
-        .isBoolean()
-        .withMessage("modifyLikes value must be a boolean value")
-        .custom(value => value === true)
-        .withMessage("modifyLikes must be true")
-    ,
-    body('value')
-        .isInt({ allow_leading_zeroes: false, max: 1, min: -1 })
-        .withMessage('value must be 1 or -1')
-];
+exports.validateLikesUpdating = body('action')
+    .notEmpty()
+    .withMessage('Action must be passed')
+    .isInt({ allow_leading_zeroes: false, max: 1, min: -1 })
+    .withMessage('Action value must be 1 or -1')
+    .customSanitizer(action => parseInt(action));
 
 exports.validateQueryParams = [
     validateLastId()
+    ,
+    query('tags')
+        .optional()
+        .isString()
+        .customSanitizer(tags => tags.split(','))
+    ,
+    query('following')
+        .optional()
+        .isBoolean({ strict: true })
+        .withMessage('following parameter must be true or false')
+        .customSanitizer(following => Boolean(following))
 ];
 
 exports.validatePostId = validatePostId();
+
+exports.validateLastId = validateLastId();
 
 exports.handleValidationErrors = (req, res, next) => {
     let errors = validationResult(req);
