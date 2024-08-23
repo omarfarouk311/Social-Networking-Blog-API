@@ -7,9 +7,9 @@ const { notFound, errorHandlingMiddleware } = require('./middlewares/errors');
 const feedRouter = require('./routes/feed');
 const bookmarksRouter = require('./routes/bookmarks');
 const profileRouter = require('./routes/profile');
+const authRouter = require('./routes/auth');
 const { authenticateUser } = require('./controllers/auth');
 const cookieParser = require('cookie-parser');
-const { csrfProtection } = require('./controllers/auth');
 
 const app = express();
 
@@ -21,8 +21,6 @@ app.use(cors({
 
 app.use(cookieParser(process.env.COOKIE_SECRET));
 
-app.use(csrfProtection);
-
 app.use(express.json());
 
 app.use('/images', express.static(join(__dirname, 'images')));
@@ -32,6 +30,8 @@ app.use('/feed', authenticateUser, feedRouter);
 app.use('/bookmarks', authenticateUser, bookmarksRouter);
 
 app.use('/profile', authenticateUser, profileRouter);
+
+app.use(authRouter);
 
 app.all('*', notFound);
 
