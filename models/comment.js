@@ -3,7 +3,7 @@ const User = require('./user');
 const Post = require('./post');
 
 module.exports = class Comment {
-    constructor({ content, creationDate, creatorId, likes, _id, postId, parentsIds, repliesCount, likingUsersIds }) {
+    constructor({ content, creationDate, creatorId, likes, _id, postId, parentsIds, repliesCount, likingUsersIds, parentId }) {
         this.content = content;
         this.creationDate = creationDate;
         this.creatorId = creatorId;
@@ -11,6 +11,7 @@ module.exports = class Comment {
         this.likes = likes;
         this._id = _id;
         this.parentsIds = parentsIds;
+        this.parentId = parentId
         this.repliesCount = repliesCount;
         this.likingUsersIds = likingUsersIds;
     }

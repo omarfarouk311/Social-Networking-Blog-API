@@ -2,8 +2,8 @@ const Comment = require('../models/comment');
 const Post = require('../models/post');
 
 exports.getComments = async (req, res, next) => {
-    const { lastId } = req.query, { userId } = req, { postId } = req.params;
-    const filter = { postId };
+    const { lastId, parentId } = req.query, { userId } = req, { postId } = req.params;
+    const filter = { postId, parentId };
     if (lastId) {
         filter._id = { $lt: lastId };
     }
@@ -30,6 +30,7 @@ exports.createComment = async (req, res, next) => {
         const comment = new Comment({
             content,
             parentsIds,
+            parentId,
             creationDate: new Date(Date.now()).toISOString(),
             creatorId: userId,
             postId,
