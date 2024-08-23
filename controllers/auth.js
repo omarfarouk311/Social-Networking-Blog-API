@@ -33,12 +33,9 @@ exports.signUp = async (req, res, next) => {
             likedCommentsIds: [],
             followersCount: 0,
             followingCount: 0,
-            creationDate: new Date(Date.now()).toISOString()
+            creationDate: new Date(Date.now()).toISOString(),
+            imageUrl: req.file ? req.file.path : null
         });
-
-        if (req.file) {
-            user.imageUrl = req.file;
-        }
 
         await user.createUser();
         res.statusCode(201).json({
