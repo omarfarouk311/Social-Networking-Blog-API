@@ -1,12 +1,13 @@
 const { Router } = require('express');
 const { notAllowed, notFound } = require('../middlewares/errors');
-const { checkPostExistence, validateLikesUpdating, handleValidationErrors, validateQueryParams, validatePostId,
+const { checkPostExistence, validateLikesUpdating, handleValidationErrors, validatePostId,
     validateStructure } = require('../middlewares/validation/post');
-const { checkCommentExistence, validateCommentCreation, validateCommentUpdating,
+const { checkCommentExistence, validateCommentCreation, validateCommentUpdating, validateQueryParams,
     validateRouteParams } = require('../middlewares/validation/comments');
 const { authorizeCommentDeletion, authorizeCommentUpdating } = require('../middlewares/authorization/comment');
 const userController = require('../controllers/user');
 const commentsController = require('../controllers/comments');
+const { validatePage } = require('../middlewares/validation/user');
 const router = Router();
 
 router.route('/comments')
@@ -22,7 +23,8 @@ router.route('/:commentId')
     .all(notAllowed);
 
 router.route('/:commentId/likes')
-    .get(validateRouteParams, validateStructure, handleValidationErrors, checkCommentExistence, commentsController.getCommentsLikers)
+    .get(validateRouteParams, validatePage, validateStructure, handleValidationErrors, checkCommentExistence,
+        commentsController.getCommentsLikers)
     .patch(validateRouteParams, validateLikesUpdating, validateStructure, handleValidationErrors, checkCommentExistence,
         userController.updateCommentLikes)
     .all(notAllowed)
