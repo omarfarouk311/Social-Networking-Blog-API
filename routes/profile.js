@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { notAllowed } = require('../middlewares/errors');
-const { validateQueryParams, handleValidationErrors, validateStructure } = require('../middlewares/validation/post');
+const { validateLastId, handleValidationErrors, validateStructure } = require('../middlewares/validation/post');
 const { getUserProfile, getUserPosts, getUserLikes, getUserFollowing, getUserFollowers,
     updateFollowers, getUserData, updateUser } = require('../controllers/user');
 const { validateFollowAction, validateUserCreation, validatePage } = require('../middlewares/validation/user');
@@ -18,7 +18,7 @@ router.route('/account')
     .all(notAllowed);
 
 router.route('/posts')
-    .get(validateQueryParams, handleValidationErrors, getUserPosts)
+    .get(validateLastId, handleValidationErrors, getUserPosts)
     .all(notAllowed);
 
 router.route('/likes')

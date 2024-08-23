@@ -300,10 +300,10 @@ exports.getUserLikes = async (req, res, next) => {
 };
 
 exports.getUserPosts = async (req, res, next) => {
-    const { userId } = req, { lastId } = req.query;
+    const { userId } = req.params || req, { lastId } = req.query;
     const filter = { creatorId: userId };
     if (lastId) {
-        filter._id.$lt = lastId;
+        filter._id = { $lt: lastId };
     }
 
     try {
