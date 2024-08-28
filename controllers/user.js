@@ -1,5 +1,6 @@
 const User = require('../models/user');
 const Post = require('../models/post');
+const DatabaseFacade = require('../models/database facade');
 const { getDb } = require('../util/database');
 
 exports.addBookmark = async (req, res, next) => {
@@ -96,7 +97,7 @@ exports.deleteUser = async (req, res, next) => {
         const user = await User.getUser({ _id: userId }, projection);
 
         const db = getDb();
-        await Promise.all[User.deleteUser(user), db.collection('tokens').deleteOne({ userId }),
+        await Promise.all[DatabaseFacade.deleteUser(user), db.collection('tokens').deleteOne({ userId }),
             db.collection('refresh tokens').deleteOne({ userId })];
 
         return res
