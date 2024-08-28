@@ -1,5 +1,6 @@
 const Post = require('../models/post');
 const User = require('../models/user');
+const DatabaseFacade = require('../models/database facade');
 
 exports.getPosts = async (req, res, next) => {
     const { lastId, tags, following } = req.query, { userId } = req;
@@ -30,6 +31,7 @@ exports.getPosts = async (req, res, next) => {
 
 exports.getPost = async (req, res, next) => {
     const { postId } = req.params, { userId } = req;
+
     try {
         const post = await Post.getPostInfo({ _id: postId }, userId);
         if (!post) {
@@ -62,7 +64,7 @@ exports.createPost = async (req, res, next) => {
         const post = new Post({
             ...body,
             creatorId: userId,
-            creationDate: new Date(Date.now()).toISOString(),
+            creationDate: new Date(Date.now()),
             commentsIds: [],
             likes: 0,
             bookmarkingUsersIds: [],
@@ -87,7 +89,7 @@ exports.deletePost = async (req, res, next) => {
     const { post } = req;
 
     try {
-        await post.deletePost({ _id: post._id });
+        await DatabaseFacade.deletePost(post);
         return res.status(204).json({ message: 'Post deleted successfully' });
     }
     catch (err) {
@@ -108,12 +110,12 @@ exports.updatePost = async (req, res, next) => {
             body.imagesUrls = req.files.map(file => file.path);
         }
 
-        const projection = { _id: 0 };
+        const projection = {};
         for (const key in body) {
             projection[key] = 1;
         }
 
-        const updatedPost = await post.findAndUpdatePost({ _id: post._id }, { $set: body }, projection);
+        const updatedPost = await Post.findAndUpdatePost({ _id: post._id }, { $set: body }, projection);
         return res.status(200).json({
             message: 'Post updated successfully',
             ...updatedPost
@@ -128,10 +130,42 @@ exports.getPostLikers = async (req, res, next) => {
     const { post } = req, { page = 0 } = req.query;
 
     try {
-        const users = await post.getPostLikers(page);
+        const users = await Post.getPostLikers(page, post._id);
         return res.status(200).json({
             message: 'Post likers fetched successfully',
             users
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
+};
+
+exports.updatePostLikes = async (req, res, next) => {
+    const { userId, post } = req, { action } = req.body;
+    let updatedPost;
+
+    try {
+        if (action === 1) {
+            updatedPost = await User.likePost(userId, post._id);
+            if (!updatedPost) {
+                const err = new Error('Post already liked');
+                err.statusCode = 409;
+                throw err;
+            }
+        }
+        else {
+            updatedPost = await User.unlikePost(userId, post._id);
+            if (!updatedPost) {
+                const err = new Error("Post isn't liked");
+                err.statusCode = 409;
+                throw err;
+            }
+        }
+
+        return res.status(200).json({
+            message: 'Post Likes updated successfully',
+            ...updatedPost
         });
     }
     catch (err) {
