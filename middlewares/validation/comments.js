@@ -15,7 +15,7 @@ exports.checkCommentExistence = async (req, res, next) => {
             throw err;
         }
 
-        req.comment = new Comment(comment);
+        req.comment = comment;
         return next();
     }
     catch (err) {

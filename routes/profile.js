@@ -2,9 +2,9 @@ const { Router } = require('express');
 const { notAllowed } = require('../middlewares/errors');
 const { validateLastId, handleValidationErrors, validateStructure } = require('../middlewares/validation/post');
 const { getUserProfile, getUserPosts, getUserLikes, getUserFollowing, getUserFollowers,
-    updateFollowers, getUserData, updateUser } = require('../controllers/user');
+    updateFollowers, getUserData, updateUser, deleteUser } = require('../controllers/user');
 const { validateFollowAction, validateUserCreation, validatePage } = require('../middlewares/validation/user');
-const upload = require('../util/multer configurations');
+const upload = require('../util/multer configurations').single('image');
 const userRouter = require('./user');
 const router = Router();
 
@@ -14,7 +14,8 @@ router.route('/')
 
 router.route('/account')
     .get(getUserData)
-    .put(validateUserCreation, validateStructure, handleValidationErrors, upload.single('image'), updateUser)
+    .put(upload, validateUserCreation, validateStructure, handleValidationErrors, updateUser)
+    .delete(deleteUser)
     .all(notAllowed);
 
 router.route('/posts')

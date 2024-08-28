@@ -7,18 +7,17 @@ const { checkPostExistence, validateLikesUpdating, validatePostCreation, validat
 const { validatePage } = require('../middlewares/validation/user');
 const { authorizePostDeletion, authorizePostUpdating } = require('../middlewares/authorization/post');
 const commentsRouter = require('./comments');
-const upload = require('../util/multer configurations');
+const upload = require('../util/multer configurations').array('images', 15);
 const router = Router();
 
 router.route('/')
     .get(validateQueryParams, validateStructure, handleValidationErrors, feedController.getPosts)
-    .post(validatePostCreation, validateStructure, handleValidationErrors, upload.array('images', 15),
-        feedController.createPost)
+    .post(upload, validatePostCreation, validateStructure, handleValidationErrors, feedController.createPost)
     .all(notAllowed);
 
 router.route('/:postId')
     .get(validatePostId, validateStructure, handleValidationErrors, feedController.getPost)
-    .put(validatePostUpdating, validateStructure, handleValidationErrors, authorizePostUpdating, upload.array('images', 15),
+    .put(upload, validatePostUpdating, validateStructure, handleValidationErrors, authorizePostUpdating,
         feedController.updatePost)
     .delete(validatePostId, validateStructure, handleValidationErrors, authorizePostDeletion, feedController.deletePost)
     .all(notAllowed);

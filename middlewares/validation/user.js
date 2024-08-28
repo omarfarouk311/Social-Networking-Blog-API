@@ -1,5 +1,6 @@
 const { body, query } = require('express-validator');
 const User = require('../../models/user');
+const { ObjectId } = require('mongodb');
 
 exports.checkUserExistence = async (req, res, next) => {
     const { userId } = req.params;
@@ -13,7 +14,7 @@ exports.checkUserExistence = async (req, res, next) => {
             throw err;
         }
 
-        req.user = new User(user);
+        req.user = user;
         return next();
     }
     catch (err) {
@@ -42,8 +43,6 @@ const validateUserBio = () => body('bio')
 const validateUserLocation = () => body('location')
     .isString()
     .withMessage('User location must be a string')
-    .isAlpha()
-    .withMessage('User location can contain characters only')
     .trim()
     .isLength({ max: 15 })
     .withMessage("User location length must can't exceed 15 characters");
@@ -56,8 +55,10 @@ const validateEmail = () => body('email')
     .bail()
     .normalizeEmail()
     .custom(async email => {
-        const user = await User.getUser({ email }, { email: 1 });
-        if (user) throw new Error('Email already used');
+        const user = await User.getUser({ email }, { email: 1, _id: 0 });
+        if (user) {
+            throw new Error('Email already used');
+        }
         return true;
     });
 
@@ -67,7 +68,7 @@ const validatePassword = () => body('password')
 
 
 const validateConfirmationPassword = () => body('confirmationPassword')
-    .custom((value, { location }) => value === location.password)
+    .custom((value, { req }) => value === req.body.password)
     .withMessage('Password must match confirmation password');
 
 exports.validateUserCreation = [
@@ -78,14 +79,9 @@ exports.validateUserCreation = [
 
 exports.validateSignup = [
     validateEmail(),
-    validatePassword,
+    validatePassword(),
     validateConfirmationPassword(),
     ...exports.validateUserCreation
-];
-
-exports.validateLogin = [
-    validateEmail(),
-    validatePassword()
 ];
 
 exports.validatePage = query('page', 'Invalid pagination page, it must be 0 or more')
@@ -95,20 +91,25 @@ exports.validatePage = query('page', 'Invalid pagination page, it must be 0 or m
     .customSanitizer(page => parseInt(page));
 
 exports.validateFollowAction = [
-    body('followerId')
+    body('followedId')
         .notEmpty()
-        .withMessage("followerId can't be empty")
+        .withMessage("followedId can't be empty")
         .isString()
-        .withMessage("followerId must be a string")
+        .withMessage("followedId must be a string")
         .trim()
         .isMongoId()
-        .withMessage('followerId must be a valid MongoDb ObjectId')
-        .customSanitizer(postId => ObjectId.createFromHexString(postId))
+        .withMessage('followedId must be a valid MongoDb ObjectId')
+        .customSanitizer(followedId => ObjectId.createFromHexString(followedId))
+        .custom(async (followedId, { req }) => {
+            if (req.userId.equals(followedId)) throw new Error('Invalid followedId');
+            const found = await User.getUser({ _id: followedId }, { _id: 1 });
+            if (!found) throw new Error('Invalid followedId');
+            return true;
+        })
     ,
     body('action')
         .notEmpty()
-        .withMessage('Action must be passed')
-        .isInt({ allow_leading_zeroes: false, max: 1, min: -1 })
-        .withMessage('Action value must be 1 or -1')
-        .customSanitizer(action => parseInt(action))
+        .withMessage('action must be passed')
+        .custom(action => action === 1 || action === -1)
+        .withMessage('action value must be an integer with value equals 1 or -1')
 ];

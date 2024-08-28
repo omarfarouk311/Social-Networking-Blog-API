@@ -1,6 +1,7 @@
 const Post = require('../../models/post');
 const { ObjectId } = require('mongodb');
 const { checkExact, body, validationResult, query, buildCheckFunction } = require('express-validator');
+const { deleteImages } = require('../../util/images');
 const checkPostId = buildCheckFunction(['body', 'params']);
 
 exports.checkPostExistence = async (req, res, next) => {
@@ -15,7 +16,7 @@ exports.checkPostExistence = async (req, res, next) => {
             throw err;
         }
 
-        req.post = new Post(post);
+        req.post = post;
         return next();
     }
     catch (err) {
@@ -112,13 +113,22 @@ exports.handleValidationErrors = (req, res, next) => {
     let errors = validationResult(req);
 
     if (!errors.isEmpty()) {
+        if (req.file) {
+            deleteImages([req.file.path]);
+        }
+        if (req.files) {
+            deleteImages(req.files.map(file => file.path));
+        }
+
         errors = errors.array();
         const err = errors.find(err => err.type === 'unknown_fields');
         if (err) {
             err.statusCode = 400;
             return next(err);
         }
-        return next(errors.array());
+
+        return next(errors);
     }
+
     next();
 };

@@ -19,7 +19,7 @@ function authorizePostModification(operation) {
                 });
             }
 
-            req.post = new Post(post);
+            req.post = post;
             return next();
         }
         catch (err) {

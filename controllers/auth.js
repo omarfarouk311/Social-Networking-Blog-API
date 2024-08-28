@@ -24,6 +24,8 @@ exports.signUp = async (req, res, next) => {
         }
 
         body.password = await bcrypt.hash(password, 15);
+        delete body.confirmatonPassword;
+
         const user = new User({
             ...body,
             bookmarksIds: [],
@@ -33,20 +35,26 @@ exports.signUp = async (req, res, next) => {
             likedCommentsIds: [],
             followersCount: 0,
             followingCount: 0,
-            creationDate: new Date(Date.now()).toISOString(),
+            creationDate: new Date(Date.now()),
             imageUrl: req.file ? req.file.path : null
         });
 
         await user.createUser();
-        res.statusCode(201).json({
+        const { _id, email, name, bio, location, imageUrl } = user;
+        res.status(201).json({
             message: 'User signed up successfully',
-            ...user
+            _id,
+            email,
+            name,
+            bio,
+            location,
+            imageUrl
         });
 
         transporter.sendMail({
             from: process.env.SENDER_EMAIL,
             to: body.email,
-            subject: 'Welcome in the blog',
+            subject: 'Welcome to the blog',
             html: `<h2>Thanks for signing up!</h2>`
         }).catch(err => console.error(err));
     }
@@ -70,8 +78,8 @@ exports.logIn = async (req, res, next) => {
         const refreshToken = jwt.sign({ userId: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
 
         const db = getDb();
-        await Promise.all[db.collection('tokens').insertOne({ userId: user._id, token, creationDate: new Date(Date.now()).toISOString() }),
-            db.collection('refresh tokens').insertOne({ userId: user._id, refreshToken, creationDate: new Date(Date.now()).toISOString() })];
+        await Promise.all[db.collection('tokens').insertOne({ userId: user._id, token, creationDate: new Date(Date.now()) }),
+            db.collection('refresh tokens').insertOne({ userId: user._id, refreshToken, creationDate: new Date(Date.now()) })];
 
         crypto.randomBytes(64, (err, buf) => {
             if (err) throw err;
@@ -82,13 +90,15 @@ exports.logIn = async (req, res, next) => {
                     httpOnly: true,
                     sameSite: 'None',
                     signed: true,
-                    secure: true
+                    secure: true,
+                    expires: new Date(Date.now() + 604800 * 1000)
                 })
                 .cookie('csrfToken', csrfToken, {
                     httpOnly: false,
                     sameSite: 'None',
-                    signed: true,
-                    secure: true
+                    signed: false,
+                    secure: true,
+                    expires: new Date(Date.now() + 604800 * 1000)
                 })
                 .json({
                     message: 'User logged in successfully',
@@ -113,13 +123,13 @@ exports.logOut = async (req, res, next) => {
                 httpOnly: true,
                 sameSite: 'None',
                 signed: true,
-                secure: true
+                secure: true,
             })
             .clearCookie('csrfToken', {
                 httpOnly: false,
                 sameSite: 'None',
-                signed: true,
-                secure: true
+                signed: false,
+                secure: true,
             })
             .json({ message: 'User logged out successfully' });
     }
@@ -129,7 +139,7 @@ exports.logOut = async (req, res, next) => {
 };
 
 exports.refreshToken = async (req, res, next) => {
-    const { oldRefreshToken } = req.signedCookies;
+    const { refreshToken: oldRefreshToken } = req.signedCookies;
 
     try {
         if (!oldRefreshToken) {
@@ -139,22 +149,23 @@ exports.refreshToken = async (req, res, next) => {
         }
 
         const decoded = jwt.verify(oldRefreshToken, process.env.REFRESH_TOKEN_SECRET);
-        const { userId } = decoded;
         const db = getDb();
-        const found = await db.collection('refresh tokens').findOne({ userId, oldRefreshToken }, { _id: 1 });
+        const found = await db.collection('refresh tokens').findOne({ refreshToken: oldRefreshToken }, { _id: 1 });
         if (!found) {
             const err = new Error('invalid token');
             err.statusCode = 401;
             throw err;
         }
 
+        let { userId } = decoded;
         const token = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '15m' });
         const refreshToken = jwt.sign({ userId }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
 
-        await Promise.all([db.collection('tokens').insertOne({ userId, token, creationDate: new Date(Date.now()).toISOString() }),
+        userId = ObjectId.createFromHexString(userId);
+        await Promise.all([db.collection('tokens').insertOne({ userId, token, creationDate: new Date(Date.now()) }),
         db.collection('refresh tokens').updateOne(
-            { userId, oldRefreshToken },
-            { userId, refreshToken, creationDate: new Date(Date.now()).toISOString() },
+            { refreshToken: oldRefreshToken },
+            { $set: { userId, refreshToken, creationDate: new Date(Date.now()) } },
         )]);
 
         crypto.randomBytes(64, (err, buf) => {
@@ -166,13 +177,15 @@ exports.refreshToken = async (req, res, next) => {
                     httpOnly: true,
                     sameSite: 'None',
                     signed: true,
-                    secure: true
+                    secure: true,
+                    expires: new Date(Date.now() + 604800 * 1000)
                 })
                 .cookie('csrfToken', csrfToken, {
                     httpOnly: false,
                     sameSite: 'None',
-                    signed: true,
-                    secure: true
+                    signed: false,
+                    secure: true,
+                    expires: new Date(Date.now() + 604800 * 1000)
                 })
                 .json({
                     message: 'Token refreshed successfully',
@@ -223,8 +236,8 @@ exports.csrfProtection = (req, res, next) => {
     const methods = ['POST', 'PUT', 'PATCH', 'DELETE'];
     if (!methods.includes(method)) return next();
 
-    const { csrfToken } = req.signedCookies;
-    const csrfHeader = req.headers['CSRF-TOKEN'];
+    const { csrfToken } = req.cookies;
+    const csrfHeader = req.get('CSRF-TOKEN');
     if (csrfHeader && csrfHeader === csrfToken) return next();
 
     const err = new Error('Invalid csrf token');

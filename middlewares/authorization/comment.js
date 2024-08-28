@@ -20,7 +20,7 @@ function authorizeCommentModification(operation) {
                 });
             }
 
-            req.comment = new Comment(comment);
+            req.comment = comment;
             return next();
         }
         catch (err) {
