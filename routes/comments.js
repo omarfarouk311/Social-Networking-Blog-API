@@ -26,7 +26,7 @@ router.route('/:commentId/likes')
     .get(validateRouteParams, validatePage, validateStructure, handleValidationErrors, checkCommentExistence,
         commentsController.getCommentsLikers)
     .patch(validateRouteParams, validateLikesUpdating, validateStructure, handleValidationErrors, checkCommentExistence,
-        userController.updateCommentLikes)
+        commentsController.updateCommentLikes)
     .all(notAllowed)
 
 router.all('*', notFound);

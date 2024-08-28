@@ -25,7 +25,7 @@ router.route('/:postId')
 router.route('/:postId/likes')
     .get(validatePostId, validatePage, validateStructure, handleValidationErrors, checkPostExistence, feedController.getPostLikers)
     .patch(validatePostId, validateLikesUpdating, validateStructure, handleValidationErrors, checkPostExistence,
-        userController.updatePostLikes)
+        feedController.updatePostLikes)
     .all(notAllowed);
 
 router.use('/:postId', commentsRouter);
