@@ -75,7 +75,8 @@ exports.updateComment = async (req, res, next) => {
             projection[key] = 1;
         }
 
-        const updatedComment = await Comment.findAndUpdateComment({ _id: comment._id }, { $set: body }, projection);
+        const updatedComment = await Comment.findAndUpdateComment({ _id: comment._id }, { $set: body },
+            { projection, returnDocument: 'after' });
         return res.status(200).json({
             message: 'Post updated successfully',
             ...updatedComment
@@ -87,13 +88,14 @@ exports.updateComment = async (req, res, next) => {
 };
 
 exports.getCommentsLikers = async (req, res, next) => {
-    const { comment } = req, { page = 0 } = req.query;
+    const { comment } = req, { page } = req.query;
 
     try {
         const users = await Comment.getCommentLikers(page, comment._id);
         return res.status(200).json({
             message: 'Post likers fetched successfully',
-            users
+            users,
+            page
         });
     }
     catch (err) {

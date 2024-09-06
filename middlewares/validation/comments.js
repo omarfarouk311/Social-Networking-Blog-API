@@ -31,6 +31,7 @@ const validateCommentId = () => param('commentId')
     .trim()
     .isMongoId()
     .withMessage('commentId must be a valid MongoDb ObjectId')
+    .bail()
     .customSanitizer(commentId => ObjectId.createFromHexString(commentId));
 
 const validateCommentContent = () => body('content')
@@ -51,6 +52,7 @@ const validateParentId = () => body('parentId')
     .trim()
     .isMongoId()
     .withMessage('parentId must be a valid MongoDb ObjectId')
+    .bail()
     .customSanitizer(parentId => ObjectId.createFromHexString(parentId));
 
 exports.validateCommentCreation = [

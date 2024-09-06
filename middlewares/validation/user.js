@@ -84,10 +84,12 @@ exports.validateSignup = [
     ...exports.validateUserCreation
 ];
 
-exports.validatePage = query('page', 'Invalid pagination page, it must be 0 or more')
-    .optional()
+exports.validatePage = query('page')
     .notEmpty()
-    .isInt()
+    .withMessage('page number must be passed as a query parameter')
+    .isInt({ gt: -1 })
+    .withMessage('Invalid pagination page, it must be 0 or more')
+    .bail()
     .customSanitizer(page => parseInt(page));
 
 exports.validateFollowAction = [
@@ -99,6 +101,7 @@ exports.validateFollowAction = [
         .trim()
         .isMongoId()
         .withMessage('followedId must be a valid MongoDb ObjectId')
+        .bail()
         .customSanitizer(followedId => ObjectId.createFromHexString(followedId))
         .custom(async (followedId, { req }) => {
             if (req.userId.equals(followedId)) throw new Error('Invalid followedId');

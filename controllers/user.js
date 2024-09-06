@@ -1,7 +1,6 @@
 const User = require('../models/user');
 const Post = require('../models/post');
 const DatabaseFacade = require('../models/database facade');
-const { getDb } = require('../util/database');
 
 exports.addBookmark = async (req, res, next) => {
     const { userId, post } = req;
@@ -40,14 +39,16 @@ exports.removeBookmark = async (req, res, next) => {
 };
 
 exports.getBookmarks = async (req, res, next) => {
-    const { userId } = req, { page = 0 } = req.query;
+    const { userId } = req, { page } = req.query;
 
     try {
-        const bookmarksIds = await User.getUserBookmarks(page, userId)
+        const { bookmarksIds, totalBookmarks } = await User.getUserBookmarks(page, userId)
         const posts = await Post.getPostsInfo({ _id: { $in: bookmarksIds } }, userId, true);
         return res.status(200).json({
             message: 'User bookmarks fetched successfully',
-            posts
+            posts,
+            page,
+            totalBookmarks
         });
     }
     catch (err) {
@@ -94,11 +95,9 @@ exports.deleteUser = async (req, res, next) => {
             likedPostsIds: 1,
             likedCommentsIds: 1
         };
-        const user = await User.getUser({ _id: userId }, projection);
 
-        const db = getDb();
-        await Promise.all[DatabaseFacade.deleteUser(user), db.collection('tokens').deleteOne({ userId }),
-            db.collection('refresh tokens').deleteOne({ userId })];
+        const user = await User.getUser({ _id: userId }, projection);
+        await DatabaseFacade.deleteUser(user);
 
         return res
             .status(204)
@@ -141,7 +140,7 @@ exports.updateUser = async (req, res, next) => {
             projection[key] = 1;
         }
 
-        const updatedUser = await User.findAndUpdateUser({ _id: userId }, { $set: body }, projection);
+        const updatedUser = await User.findAndUpdateUser({ _id: userId }, { $set: body }, { projection, returnDocument: 'after' });
         return res.status(200).json({
             message: 'User data updated successfully',
             ...updatedUser
@@ -194,12 +193,13 @@ function getUsers(options) {
     const { field } = options;
     return async (req, res, next) => {
         const userId = req.params.userId || req.userId;
-        const { page = 0 } = req.query;
+        const { page } = req.query;
         try {
             const users = await User.getUsersInfo({ _id: userId }, field, page);
             return res.status(200).json({
                 message: 'Users fetched successfully',
-                users
+                users,
+                page
             })
         }
         catch (err) {
@@ -213,14 +213,16 @@ exports.getUserFollowing = getUsers({ field: 'followingIds' });
 exports.getUserFollowers = getUsers({ field: 'followersIds' });
 
 exports.getUserLikes = async (req, res, next) => {
-    const { userId } = req, { page = 0 } = req.query;
+    const { userId } = req, { page } = req.query;
 
     try {
-        const likedPostsIds = await User.getUserLikesIds(page, userId);
+        const { likedPostsIds, totalLikes } = await User.getUserLikesIds(page, userId);
         const posts = await Post.getPostsInfo({ _id: { $in: likedPostsIds } }, userId, true);
         return res.status(200).json({
             message: 'User liked posts fetched successfully',
-            posts
+            posts,
+            page,
+            totalLikes
         });
     }
     catch (err) {

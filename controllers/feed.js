@@ -115,7 +115,7 @@ exports.updatePost = async (req, res, next) => {
             projection[key] = 1;
         }
 
-        const updatedPost = await Post.findAndUpdatePost({ _id: post._id }, { $set: body }, projection);
+        const updatedPost = await Post.findAndUpdatePost({ _id: post._id }, { $set: body }, { projection, returnDocument: 'after' });
         return res.status(200).json({
             message: 'Post updated successfully',
             ...updatedPost
@@ -127,13 +127,14 @@ exports.updatePost = async (req, res, next) => {
 };
 
 exports.getPostLikers = async (req, res, next) => {
-    const { post } = req, { page = 0 } = req.query;
+    const { post } = req, { page } = req.query;
 
     try {
         const users = await Post.getPostLikers(page, post._id);
         return res.status(200).json({
             message: 'Post likers fetched successfully',
-            users
+            users,
+            page
         });
     }
     catch (err) {

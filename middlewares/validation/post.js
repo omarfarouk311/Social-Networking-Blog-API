@@ -36,15 +36,18 @@ const validatePostId = () => checkPostId('postId')
     .trim()
     .isMongoId()
     .withMessage('postId must be a valid MongoDb ObjectId')
+    .bail()
     .customSanitizer(postId => ObjectId.createFromHexString(postId))
 
 const validateLastId = () => query('lastId')
-    .optional()
+    .notEmpty()
+    .withMessage('lastId must be passed in query parameters')
     .isString()
     .withMessage("lastId must be a string")
     .trim()
     .isMongoId()
     .withMessage('lastId must be a valid MongoDb ObjectId')
+    .bail()
     .customSanitizer(lastId => ObjectId.createFromHexString(lastId))
 
 const validatePostTitle = () => body('title')
@@ -88,6 +91,7 @@ exports.validateLikesUpdating = body('action')
     .withMessage('Action must be passed')
     .isInt({ allow_leading_zeroes: false, max: 1, min: -1 })
     .withMessage('Action value must be 1 or -1')
+    .bail()
     .customSanitizer(action => parseInt(action));
 
 exports.validateQueryParams = [
@@ -96,12 +100,15 @@ exports.validateQueryParams = [
     query('tags')
         .optional()
         .isString()
+        .withMessage('tags values must be a string')
+        .bail()
         .customSanitizer(tags => tags.split(','))
     ,
     query('following')
         .optional()
         .isBoolean({ strict: true })
         .withMessage('following parameter must be true or false')
+        .bail()
         .customSanitizer(following => Boolean(following))
 ];
 
