@@ -1,7 +1,6 @@
 const { Router } = require('express');
 const { notAllowed } = require('../middlewares/errors');
 const feedController = require('../controllers/feed');
-const userController = require('../controllers/user');
 const { checkPostExistence, validateLikesUpdating, validatePostCreation, validatePostUpdating,
     handleValidationErrors, validateQueryParams, validatePostId, validateStructure } = require('../middlewares/validation/post');
 const { validatePage } = require('../middlewares/validation/user');

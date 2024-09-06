@@ -27,12 +27,12 @@ router.route('/likes')
     .all(notAllowed);
 
 router.route('/following')
-    .get(getUserFollowing)
+    .get(validatePage, handleValidationErrors, getUserFollowing)
     .patch(validateFollowAction, handleValidationErrors, updateFollowers)
     .all(notAllowed);
 
 router.route('/followers')
-    .get(getUserFollowers)
+    .get(validatePage, handleValidationErrors, getUserFollowers)
     .all(notAllowed);
 
 router.use('/:userId', userRouter);

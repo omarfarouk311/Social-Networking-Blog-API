@@ -5,7 +5,6 @@ const { checkPostExistence, validateLikesUpdating, handleValidationErrors, valid
 const { checkCommentExistence, validateCommentCreation, validateCommentUpdating, validateQueryParams,
     validateRouteParams } = require('../middlewares/validation/comments');
 const { authorizeCommentDeletion, authorizeCommentUpdating } = require('../middlewares/authorization/comment');
-const userController = require('../controllers/user');
 const commentsController = require('../controllers/comments');
 const { validatePage } = require('../middlewares/validation/user');
 const router = Router();
