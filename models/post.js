@@ -24,25 +24,22 @@ module.exports = class Post {
         this._id = insertedId;
     }
 
-    static async findAndUpdatePost(filter, update, projection) {
+    static async findAndUpdatePost(filter, update, options) {
         const db = getDb();
-        let imagesUrls;
-        if (update.$set && update.$set.imagesUrls) {
-            imagesUrls = await Post.getPost(filter, { _id: 0, imagesUrls: 1 }).imagesUrls;
-        }
-        const updatedPost = await db.collection('posts').findOneAndUpdate(filter, update, { projection, returnDocument: 'after' });
-        if (imagesUrls) deleteImages(imagesUrls);
+        const { imagesUrls } = await Post.getPost(filter, { _id: 0, imagesUrls: 1 });
+        const updatedPost = await db.collection('posts').findOneAndUpdate(filter, update, options);
+        deleteImages(imagesUrls);
         return updatedPost;
     }
 
-    static updatePost(filter, update) {
+    static updatePost(filter, update, options = {}) {
         const db = getDb();
-        return db.collection('posts').updateOne(filter, update);
+        return db.collection('posts').updateOne(filter, update, options);
     }
 
-    static updatePosts(filter, update) {
+    static updatePosts(filter, update, options = {}) {
         const db = getDb();
-        return db.collection('posts').updateMany(filter, update);
+        return db.collection('posts').updateMany(filter, update, options);
     }
 
     static async getPostsInfo(filter, userId, prepared = false) {
@@ -91,15 +88,15 @@ module.exports = class Post {
         ]).toArray();
 
         if (!prepared) {
-            const lastPostId = posts.length ? posts[posts.length - 1]['_id'].toString() : null;
-            return lastPostId ? { posts, lastPostId } : { posts };
+            const lastId = posts.length ? posts[posts.length - 1]['_id'].toString() : null;
+            return { posts, lastId };
         }
         return posts;
     }
 
-    static getPosts(filter, projection) {
+    static getPosts(filter, projection, options = {}) {
         const db = getDb();
-        return db.collection('posts').find(filter).project(projection);
+        return db.collection('posts').find(filter, options).project(projection);
     }
 
     static async getPostInfo(filter, userId) {
@@ -153,7 +150,9 @@ module.exports = class Post {
             },
             {
                 $project: {
-                    lastCommentId: { $arrayElemAt: ['comments._id', -1] },
+                    lastId: {
+                        $ifNull: [{ $arrayElemAt: ['comments._id', -1] }, null]
+                    },
                     liked: { $in: [userId, '$likingUsersIds'] },
                     bookmarked: { $in: [userId, '$bookmarkingUsersIds'] },
                     bookmarkingUsersIds: 0,
@@ -201,17 +200,17 @@ module.exports = class Post {
         return result[0].users;
     }
 
-    static deletePost(filter) {
+    static deletePost(filter, options = {}) {
         const db = getDb();
-        return db.collection('posts').deleteOne(filter);
+        return db.collection('posts').deleteOne(filter, options);
     }
 
-    static deletePosts(filter) {
+    static deletePosts(filter, options = {}) {
         const db = getDb();
-        return db.collection('posts').deleteMany(filter);
+        return db.collection('posts').deleteMany(filter, options);
     }
 
-    static addLike(userId, postId) {
+    static addLike(userId, postId, options = {}) {
         const filter = { _id: postId }, update = {
             $inc: { likes: 1 }, $push: {
                 likingUsersIds: {
@@ -220,22 +219,22 @@ module.exports = class Post {
                 }
             }
         };
-        return Post.findAndUpdatePost(filter, update, { likes: 1, _id: 0 });
+        return Post.findAndUpdatePost(filter, update, options);
     }
 
-    static removeLike(userId, postId) {
+    static removeLike(userId, postId, options = {}) {
         const filter = { _id: postId }, update = { $inc: { likes: -1 }, $pull: { likingUsersIds: userId } };
-        return Post.findAndUpdatePost(filter, update, { likes: 1, _id: 0 });
+        return Post.findAndUpdatePost(filter, update, options);
     }
 
-    static addBookmark(userId, postId) {
+    static addBookmark(userId, postId, options = {}) {
         const filter = { _id: postId }, update = { $push: { bookmarkingUsersIds: userId }, $inc: { bookmarksCount: 1 } };
-        return Post.findAndUpdatePost(filter, update, { bookmarksCount: 1, _id: 0 });
+        return Post.findAndUpdatePost(filter, update, options);
     }
 
-    static removeBookmark(userId, postId) {
+    static removeBookmark(userId, postId, options = {}) {
         const filter = { _id: postId }, update = { $pull: { bookmarkingUsersIds: userId }, $inc: { bookmarksCount: -1 } };
-        return Post.findAndUpdatePost(filter, update, { bookmarksCount: 1, _id: 0 });
+        return Post.findAndUpdatePost(filter, update, options);
     }
 
 }

@@ -1,6 +1,7 @@
-const { getDb } = require('../util/database.js');
+const { getDb, getClient } = require('../util/database.js');
 const { deleteImages } = require('../util/images.js');
 const Post = require('./post.js');
+const Comment = require('./comment.js');
 
 module.exports = class User {
     constructor({ _id, email, password, name, imageUrl, followingIds, followersIds, bookmarksIds, likedPostsIds, bio, location,
@@ -28,30 +29,27 @@ module.exports = class User {
         this._id = insertedId;
     }
 
-    static async findAndUpdateUser(filter, update, projection) {
+    static async findAndUpdateUser(filter, update, options = {}) {
         const db = getDb();
-        let imageUrl;
-        if (update.$set && update.$set.imageUrl) {
-            imageUrl = await User.getUser(filter, { _id: 0, imageUrl: 1 }).imageUrl;
-        }
-        const updatedUser = await db.collection('users').findOneAndUpdate(filter, update, { projection, returnDocument: 'after' });
+        const { imageUrl } = await User.getUser(filter, { _id: 0, imageUrl: 1 });
+        const updatedUser = await db.collection('users').findOneAndUpdate(filter, update, options);
         if (imageUrl) deleteImages([imageUrl]);
         return updatedUser;
     }
 
-    static updateUser(filter, update) {
+    static updateUser(filter, update, options = {}) {
         const db = getDb();
-        return db.collection('users').updateOne(filter, update);
+        return db.collection('users').updateOne(filter, update, options);
     }
 
-    static updateUsers(filter, update) {
+    static updateUsers(filter, update, options = {}) {
         const db = getDb();
-        return db.collection('users').updateMany(filter, update);
+        return db.collection('users').updateMany(filter, update, options);
     }
 
-    static deleteUser(filter) {
+    static deleteUser(filter, options = {}) {
         const db = getDb();
-        return db.collection('users').deleteOne(filter);
+        return db.collection('users').deleteOne(filter, options);
     }
 
     static async getUserInfo(filter) {
@@ -92,7 +90,9 @@ module.exports = class User {
                             }
                         }
                     },
-                    lastPostId: { $arrayElemAt: ['$posts._id', -1] }
+                    lastId: {
+                        $ifNull: [{ $arrayElemAt: ['$posts._id', -1] }, null]
+                    }
                 }
             },
             {
@@ -154,14 +154,20 @@ module.exports = class User {
                 $match: { _id: userId }
             },
             {
+                $addFields: {
+                    totalLikes: { $size: '$likedPostsIds' }
+                }
+            },
+            {
                 $project: {
                     likedPostsIds: { $slice: ['$likedPostsIds', 10 * page, 10] },
-                    _id: 0
+                    _id: 0,
+                    totalLikes: 1
                 }
             },
         ]).toArray();
 
-        return result[0].likedPostsIds;
+        return result[0];
     }
 
     static async getUserBookmarks(page, userId) {
@@ -171,162 +177,327 @@ module.exports = class User {
                 $match: { _id: userId }
             },
             {
+                $addFields: {
+                    totalBookmarks: { $size: '$bookmarksIds' }
+                }
+            },
+            {
                 $project: {
                     bookmarksIds: { $slice: ['$bookmarksIds', 10 * page, 10] },
-                    _id: 0
+                    _id: 0,
+                    totalBookmarks: 1
                 }
             },
         ]).toArray();
 
-        return result[0].bookmarksIds;
+        return result[0];
     }
 
-    static async followUser(followedId, userId) {
-        const { modifiedCount } = await User.updateUser(
-            { _id: userId },
-            {
-                $addToSet: {
-                    followingIds: {
-                        $each: [followedId],
-                        $position: 0
+    static followUser(followedId, userId) {
+        const client = getClient();
+
+        return client.withSession(async session => {
+            return session.withTransaction(async session => {
+                const { modifiedCount } = await User.updateUser(
+                    { _id: userId },
+                    {
+                        $addToSet: {
+                            followingIds: {
+                                $each: [followedId],
+                                $position: 0
+                            }
+                        }
+                    },
+                    { session }
+                );
+
+                if (!modifiedCount) {
+                    await session.abortTransaction();
+                    return null;
+                }
+
+                const { followingCount } = await User.findAndUpdateUser(
+                    { _id: userId },
+                    {
+                        $inc: { followingCount: 1 }
+                    },
+                    { projection: { followingCount: 1, _id: 0 }, returnDocument: 'after', session }
+                );
+
+                const { followersCount } = await User.findAndUpdateUser(
+                    { _id: followedId },
+                    {
+                        $push: {
+                            followersIds: {
+                                $each: [userId],
+                                $position: 0
+                            }
+                        },
+                        $inc: { followersCount: 1 }
+                    },
+                    { projection: { followersCount: 1, _id: 0 }, returnDocument: 'after', session }
+                );
+
+                return [followingCount, followersCount];
+            }, {
+                readConcern: { level: 'majority' },
+                writeConcern: { w: 'majority', journal: true },
+                readPreference: 'primary'
+            });
+        });
+    }
+
+    static unfollowUser(followedId, userId) {
+        const client = getClient();
+
+        return client.withSession(async session => {
+            return session.withTransaction(async session => {
+                const { modifiedCount } = User.updateUser(
+                    { _id: userId },
+                    { $pull: { followingIds: followedId } },
+                    { session }
+                );
+
+                if (!modifiedCount) {
+                    await session.abortTransaction();
+                    return null;
+                }
+
+                const { followingCount } = await User.findAndUpdateUser(
+                    { _id: userId },
+                    {
+                        $inc: { followingCount: -1 }
+                    },
+                    { projection: { followingCount: 1, _id: 0 }, returnDocument: 'after', session }
+                );
+
+                const { followersCount } = await User.findAndUpdateUser(
+                    { _id: followedId },
+                    {
+                        $pull: { followersIds: userId },
+                        $inc: { followersCount: -1 }
+                    },
+                    { projection: { followersCount: 1, _id: 0 }, returnDocument: 'after', session }
+                );
+
+                return [followingCount, followersCount];
+            }, {
+                readConcern: { level: 'majority' },
+                writeConcern: { w: 'majority', journal: true },
+                readPreference: 'primary'
+            });
+        });
+    }
+
+    static addBookmark(userId, postId) {
+        const client = getClient();
+
+        return client.withSession(async session => {
+            return session.withTransaction(async session => {
+                const filter = { _id: userId }, update = {
+                    $addToSet:
+                    {
+                        bookmarksIds: {
+                            $each: [postId],
+                            $position: 0
+                        }
                     }
+                };
+                const { modifiedCount } = await User.updateUser(filter, update, { session });
+
+                if (!modifiedCount) {
+                    await session.abortTransaction();
+                    return null;
                 }
-            }
-        );
-        if (!modifiedCount) return null;
 
-        const promise1 = User.findAndUpdateUser(
-            { _id: userId },
-            {
-                $inc: { followingCount: 1 }
-            },
-            { followingCount: 1, _id: 0 }
-        );
+                const { bookmarksCount } = await Post.addBookmark(userId, postId,
+                    {
+                        projection: { bookmarksCount: 1, _id: 0 },
+                        returnDocument: 'after',
+                        session
+                    });
+                return bookmarksCount;
+            }, {
+                readConcern: { level: 'majority' },
+                writeConcern: { w: 'majority', journal: true },
+                readPreference: 'primary'
+            });
+        });
+    }
 
-        const promise2 = User.findAndUpdateUser(
-            { _id: followedId },
-            {
-                $push: {
-                    followersIds: {
-                        $each: [userId],
-                        $position: 0
+    static removeBookmark(userId, postId) {
+        const client = getClient();
+
+        return client.withSession(async session => {
+            return session.withTransaction(async session => {
+                const filter = { _id: userId }, update = { $pull: { bookmarksIds: postId } };
+                const { modifiedCount } = await User.updateUser(filter, update, { session });
+
+                if (!modifiedCount) {
+                    await session.abortTransaction();
+                    return null;
+                }
+
+                const { bookmarksCount } = await Post.removeBookmark(userId, postId,
+                    {
+                        projection: { bookmarksCount: 1, _id: 0 },
+                        returnDocument: 'after',
+                        session
+                    });
+                return bookmarksCount;
+            }, {
+                readConcern: { level: 'majority' },
+                writeConcern: { w: 'majority', journal: true },
+                readPreference: 'primary'
+            });
+        });
+    }
+
+    static likePost(userId, postId) {
+        const client = getClient();
+
+        return client.withSession(async session => {
+            return session.withTransaction(async session => {
+                const filter = { _id: userId }, update = {
+                    $addToSet: {
+                        likedPostsIds: {
+                            $each: [postId],
+                            $position: 0
+                        }
                     }
-                },
-                $inc: { followersCount: 1 }
-            },
-            { followersCount: 1, _id: 0 }
-        );
+                };
+                const { modifiedCount } = await User.updateUser(filter, update, { session });
 
-        return Promise.all([promise1, promise2]);
-    }
-
-    static async unfollowUser(followedId, userId) {
-        const { modifiedCount } = User.updateUser(
-            { _id: userId },
-            { $pull: { followingIds: followedId } },
-        );
-        if (!modifiedCount) return null;
-
-        const promise1 = User.findAndUpdateUser(
-            { _id: userId },
-            { $inc: { followingCount: -1 } },
-            { followingCount: 1, _id: 0 }
-        )
-
-        const promise2 = User.findAndUpdateUser(
-            { _id: followedId },
-            { $pull: { followersIds: userId }, $inc: { followersCount: -1 } },
-            { followersCount: 1, _id: 0 }
-        );
-
-        return Promise.all([promise1, promise2]);
-    }
-
-    static async addBookmark(userId, postId) {
-        const filter = { _id: userId }, update = {
-            $addToSet:
-            {
-                bookmarksIds: {
-                    $each: [postId],
-                    $position: 0
+                if (!modifiedCount) {
+                    await session.abortTransaction();
+                    return null;
                 }
-            }
-        };
-        const { modifiedCount } = await User.updateUser(filter, update);
-        if (!modifiedCount) return null;
-        return Post.addBookmark(userId, postId);
+
+                const { likes } = await Post.addLike(userId, postId,
+                    {
+                        projection: { likes: 1, _id: 0 },
+                        returnDocument: 'after',
+                        session
+                    });
+                return likes;
+            }, {
+                readConcern: { level: 'majority' },
+                writeConcern: { w: 'majority', journal: true },
+                readPreference: 'primary'
+            });
+        });
     }
 
-    static async removeBookmark(userId, postId) {
-        const filter = { _id: userId }, update = { $pull: { bookmarksIds: postId } };
-        const { modifiedCount } = await User.updateUser(filter, update);
-        if (!modifiedCount) return null;
-        return Post.removeBookmark(userId, postId);
-    }
+    static unlikePost(userId, postId) {
+        const client = getClient();
 
-    static async likePost(userId, postId) {
-        const filter = { _id: userId }, update = {
-            $addToSet: {
-                likedPostsIds: {
-                    $each: [postId],
-                    $position: 0
+        return client.withSession(async session => {
+            return session.withTransaction(async session => {
+                const filter = { _id: userId }, update = { $pull: { likedPostsIds: postId } };
+                const { modifiedCount } = await User.updateUser(filter, update, { session });
+
+                if (!modifiedCount) {
+                    await session.abortTransaction();
+                    return null;
                 }
-            }
-        };
-        const { modifiedCount } = await User.updateUser(filter, update);
-        if (!modifiedCount) return null;
-        return Post.addLike(userId, postId);
+
+                const { likes } = await Post.removeLike(userId, postId,
+                    {
+                        projection: { likes: 1, _id: 0 },
+                        returnDocument: 'after',
+                        session
+                    });
+                return likes;
+            }, {
+                readConcern: { level: 'majority' },
+                writeConcern: { w: 'majority', journal: true },
+                readPreference: 'primary'
+            });
+        });
     }
 
-    static async unlikePost(userId, postId) {
-        const filter = { _id: userId }, update = { $pull: { likedPostsIds: postId } };
-        const { modifiedCount } = await User.updateUser(filter, update);
-        if (!modifiedCount) return null;
-        return Post.removeLike(userId, postId);
+    static likeComment(userId, commentId) {
+        const client = getClient();
+
+        return client.withSession(async session => {
+            return session.withTransaction(async session => {
+                const filter = { _id: userId }, update = { $addToSet: { likedCommentsIds: commentId } };
+                const { modifiedCount } = await User.updateUser(filter, update, { session });
+
+                if (!modifiedCount) {
+                    await session.abortTransaction();
+                    return null;
+                }
+
+                const { likes } = await Comment.addLike(userId, commentId, {
+                    projection: { likes: 1, _id: 0 },
+                    returnDocument: 'after',
+                    session
+                });
+                return likes;
+            }, {
+                readConcern: { level: 'majority' },
+                writeConcern: { w: 'majority', journal: true },
+                readPreference: 'primary'
+            });
+        });
     }
 
-    static async likeComment(userId, commentId) {
-        const filter = { _id: userId }, update = { $addToSet: { likedCommentsIds: commentId } };
-        const { modifiedCount } = await User.updateUser(filter, update);
-        if (!modifiedCount) return null;
-        return Comment.addLike(userId, commentId);
+    static unlikeComment(userId, commentId) {
+        const client = getClient();
+
+        return client.withSession(async session => {
+            return session.withTransaction(async session => {
+                const filter = { _id: userId }, update = { $pull: { likedCommentsIds: commentId } };
+                const { modifiedCount } = await User.updateUser(filter, update, { session });
+
+                if (!modifiedCount) {
+                    await session.abortTransaction();
+                    return null;
+                }
+
+                const { likes } = await Comment.removeLike(userId, commentId, {
+                    projection: { likes: 1, _id: 0 },
+                    returnDocument: 'after',
+                    session
+                });
+                return likes;
+            }, {
+                readConcern: { level: 'majority' },
+                writeConcern: { w: 'majority', journal: true },
+                readPreference: 'primary'
+            });
+        });
     }
 
-    static async unlikeComment(userId, commentId) {
-        const filter = { _id: userId }, update = { $pull: { likedCommentsIds: commentId } };
-        const { modifiedCount } = await User.updateUser(filter, update);
-        if (!modifiedCount) return null;
-        return Comment.removeLike(userId, commentId);
-    }
-
-    static removePostFromBookmarks(bookmarkingUsersIds, postId) {
+    static removePostFromBookmarks(bookmarkingUsersIds, postId, options = {}) {
         const filter = { _id: { $in: bookmarkingUsersIds } }, update = { $pull: { bookmarksIds: postId } };
-        return User.updateUsers(filter, update);
+        return User.updateUsers(filter, update, options);
     }
 
-    static removePostFromLikedPosts(likingUsersIds, postId) {
+    static removePostFromLikedPosts(likingUsersIds, postId, options = {}) {
         const filter = { _id: { $in: likingUsersIds } }, update = { $pull: { likedPostsIds: postId } };
-        return User.updateUsers(filter, update);
+        return User.updateUsers(filter, update, options);
     }
 
-    static removePostsFromBookmarks(bookmarkingUsersIds, postsIds) {
+    static removePostsFromBookmarks(bookmarkingUsersIds, postsIds, options = {}) {
         const filter = { _id: { $in: bookmarkingUsersIds } }, update = { $pull: { bookmarksIds: { $in: postsIds } } };
-        return User.updateUsers(filter, update);
+        return User.updateUsers(filter, update, options);
     }
 
-    static removePostsFromLikedPosts(likingUsersIds, postsIds) {
+    static removePostsFromLikedPosts(likingUsersIds, postsIds, options = {}) {
         const filter = { _id: { $in: likingUsersIds } }, update = { $pull: { likedPostsIds: { $in: postsIds } } };
-        return User.updateUsers(filter, update);
+        return User.updateUsers(filter, update), options;
     }
 
-    static removeCommentFromLikedComments(likingUsersIds, commentId) {
+    static removeCommentFromLikedComments(likingUsersIds, commentId, options = {}) {
         const filter = { _id: { $in: likingUsersIds } }, update = { $pull: { likedCommentsIds: commentId } };
-        return User.updateUsers(filter, update);
+        return User.updateUsers(filter, update, options);
     }
 
-    static removeCommentsFromLikedComments(likingUsersIds, commentsIds) {
+    static removeCommentsFromLikedComments(likingUsersIds, commentsIds, options = {}) {
         const filter = { _id: { $in: likingUsersIds } }, update = { $pull: { likedCommentsIds: { $in: commentsIds } } };
-        return User.updateUsers(filter, update);
+        return User.updateUsers(filter, update, options);
     }
 
 }

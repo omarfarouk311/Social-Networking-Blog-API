@@ -27,9 +27,9 @@ module.exports = class Comment {
         this._id = insertedId;
     }
 
-    static findAndUpdateComment(filter, update, projection) {
+    static findAndUpdateComment(filter, update, options) {
         const db = getDb();
-        return db.collection('comments').findOneAndUpdate(filter, update, { projection, returnDocument: 'after' });
+        return db.collection('comments').findOneAndUpdate(filter, update, options);
     }
 
     static updateComment(filter, update) {
@@ -37,9 +37,9 @@ module.exports = class Comment {
         return db.collection('comments').updateOne(filter, update);
     }
 
-    static updateComments(filter, update) {
+    static updateComments(filter, update, options = {}) {
         const db = getDb();
-        return db.collection('comments').updateMany(filter, update);
+        return db.collection('comments').updateMany(filter, update, options);
     }
 
     static async getCommentsInfo(filter, userId) {
@@ -78,13 +78,13 @@ module.exports = class Comment {
             }
         ]).toArray();
 
-        const lastCommentId = comments.length ? comments[comments.length - 1]['_id'].toString() : null;
-        return { comments, lastCommentId };
+        const lastId = comments.length ? comments[comments.length - 1]['_id'].toString() : null;
+        return { comments, lastId };
     }
 
-    static getComments(filter, projection) {
+    static getComments(filter, projection, options = {}) {
         const db = getDb();
-        return db.collection('comments').find(filter).project(projection);
+        return db.collection('comments').find(filter, options).project(projection);
     }
 
     static getComment(filter, projection) {
@@ -123,17 +123,17 @@ module.exports = class Comment {
         return result[0].users;
     }
 
-    static deleteComment(filter) {
+    static deleteComment(filter, options = {}) {
         const db = getDb();
-        return db.collection('comments').deleteOne(filter);
+        return db.collection('comments').deleteOne(filter, options);
     }
 
-    static deleteComments(filter) {
+    static deleteComments(filter, options = {}) {
         const db = getDb();
-        return db.collection('comments').deleteMany(filter);
+        return db.collection('comments').deleteMany(filter, options);
     }
 
-    static addLike(userId, commentId) {
+    static addLike(userId, commentId, options = {}) {
         const filter = { _id: commentId }, update = {
             $inc: { likes: 1 },
             $push: {
@@ -143,12 +143,12 @@ module.exports = class Comment {
                 }
             }
         };
-        return Comment.findAndUpdateComment(filter, update, { likes: 1 });
+        return Comment.findAndUpdateComment(filter, update, options);
     }
 
-    static removeLike(userId, commentId) {
+    static removeLike(userId, commentId, options = {}) {
         const filter = { _id: commentId }, update = { $inc: { likes: -1 }, $pull: { likingUsersIds: userId } };
-        return Comment.findAndUpdateComment(filter, update, { likes: 1 });
+        return Comment.findAndUpdateComment(filter, update, { likes: 1 }, options);
     }
 
 }

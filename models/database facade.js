@@ -2,82 +2,109 @@ const Post = require('./post.js');
 const Comment = require('./comment.js');
 const User = require('./user.js');
 const { deleteImages } = require('../util/images.js');
-const { getDb } = require('../util/database.js');
+const { getDb, getClient } = require('../util/database.js');
 
 module.exports = class DatabaseFacade {
 
     static async deleteUser(filters) {
-        const promises = [
-            User.deleteUser({ _id: filters._id })
-            ,
-            DatabaseFacade.deletePosts({ creatorId: filters._id })
-            ,
-            DatabaseFacade.deleteComments({ creatorId: filters._id })
-            ,
-            Post.updatePosts({ _id: { $in: filters.likedPostsIds } }, {
-                $inc: { likes: -1 },
-                $pull: { likingUsersIds: filters._id }
-            })
-            ,
-            Post.updatePosts({ _id: { $in: filters.bookmarksIds } }, { $pull: { bookmarkingUsersIds: filters._id } })
-            ,
-            Comment.updateComments({ _id: { $in: filters.likedCommentsIds } }, {
-                $inc: { likes: -1 },
-                $pull: { likingUsersIds: filters._id }
-            })
-            ,
-            User.updateUsers({ _id: { $in: filters.followersIds } }, {
-                $pull: { followingIds: filters._id },
-                $inc: { followingIds: -1 }
-            })
-            ,
-            User.updateUsers({ _id: { $in: filters.followingIds } }, {
-                $pull: { followersIds: filters._id },
-                $inc: { followersIds: -1 }
-            })
-        ];
+        const client = getClient();
 
-        await Promise.all(promises);
-        const { imageUrl } = filters;
-        deleteImages([imageUrl]);
+        return client.withSession(async session => {
+            return session.withTransaction(async session => {
+                await User.deleteUser({ _id: filters._id }, { session });
+
+                await DatabaseFacade.deletePosts({ creatorId: filters._id }, { session });
+
+                await DatabaseFacade.deleteComments({ creatorId: filters._id }, { session });
+
+                await Post.updatePosts({ _id: { $in: filters.likedPostsIds } }, {
+                    $inc: { likes: -1 },
+                    $pull: { likingUsersIds: filters._id }
+                }, { session });
+
+                await Post.updatePosts({ _id: { $in: filters.bookmarksIds } }, {
+                    $inc: { bookmarksCount: -1 },
+                    $pull: { bookmarkingUsersIds: filters._id }
+                }, { session });
+
+                await Comment.updateComments({ _id: { $in: filters.likedCommentsIds } }, {
+                    $inc: { likes: -1 },
+                    $pull: { likingUsersIds: filters._id }
+                }, { session });
+
+                await User.updateUsers({ _id: { $in: filters.followersIds } }, {
+                    $pull: { followingIds: filters._id },
+                    $inc: { followingCount: -1 }
+                }, { session });
+
+                await User.updateUsers({ _id: { $in: filters.followingIds } }, {
+                    $pull: { followersIds: filters._id },
+                    $inc: { followersCount: -1 }
+                }, { session });
+
+                const db = getDb();
+                await db.collection('tokens').deleteOne({ userId: filters._id }, { session });
+                await db.collection('refresh tokens').deleteOne({ userId: filters._id }, { session });
+
+                const { imageUrl } = filters;
+                deleteImages([imageUrl]);
+            }, {
+                readConcern: { level: 'local' },
+                writeConcern: { w: 'majority', journal: true },
+                readPreference: 'primary'
+            });
+        });
     }
 
-    static async deletePost(filters) {
-        const promises = [
-            Post.deletePost({ _id: filters._id })
-            ,
-            DatabaseFacade.deleteComments({ postId: filters._id })
-            ,
-            User.removePostFromBookmarks(filters.bookmarkingUsersIds, filters._id)
-            ,
-            User.removePostFromLikedPosts(filters.likingUsersIds, filters._id)
-        ];
+    static deletePost(filters) {
+        const client = getClient();
 
-        await Promise.all(promises);
-        const { imagesUrls } = filters
-        deleteImages(imagesUrls);
+        return client.withSession(async session => {
+            return session.withTransaction(async session => {
+                await Post.deletePost({ _id: filters._id }, { session });
+
+                await DatabaseFacade.deleteComments({ postId: filters._id }, { session });
+
+                await User.removePostFromBookmarks(filters.bookmarkingUsersIds, filters._id, { session });
+
+                await User.removePostFromLikedPosts(filters.likingUsersIds, filters._id, { session });
+
+                const { imagesUrls } = filters
+                deleteImages(imagesUrls);
+            }, {
+                readConcern: { level: 'local' },
+                writeConcern: { w: 'majority', journal: true },
+                readPreference: 'primary'
+            });
+        });
     }
 
     static deleteComment(filters) {
-        const promises = [
-            Comment.deleteComment({ _id: filters._id })
-            ,
-            DatabaseFacade.deleteComments({ parentsIds: filters._id })
-            ,
-            User.removeCommentFromLikedComments(filters.likingUsersIds, filters.commentId)
-            ,
-            Post.updatePost({ _id: filters.postId }, { $inc: { commentsCount: -1 } })
-        ];
+        const client = getClient();
 
-        if (filters.parentsIds.length) {
-            promises.push(Comment.updateComments({ _id: { $in: filters.parentsIds } }, { $inc: { repliesCount: -1 } }));
-        }
+        return client.withSession(async session => {
+            return session.withTransaction(async session => {
+                await Comment.deleteComment({ _id: filters._id }, { session });
 
-        return Promise.all(promises);
+                await DatabaseFacade.deleteComments({ parentsIds: filters._id }, { session });
+
+                await User.removeCommentFromLikedComments(filters.likingUsersIds, filters.commentId, { session });
+
+                await Post.updatePost({ _id: filters.postId }, { $inc: { commentsCount: -1 } }, { session });
+
+                if (filters.parentsIds.length) {
+                    await Comment.updateComments({ _id: { $in: filters.parentsIds } }, { $inc: { repliesCount: -1 } }, { session });
+                }
+            }, {
+                readConcern: { level: 'local' },
+                writeConcern: { w: 'majority', journal: true },
+                readPreference: 'primary'
+            });
+        });
     }
 
-    static async deleteComments(filter) {
-        const comments = await Comment.getComments(filter, { likingUsersIds: 1, postId: 1, parentsIds: 1 });
+    static async deleteComments(filter, options = {}) {
+        const comments = await Comment.getComments(filter, { likingUsersIds: 1, postId: 1, parentsIds: 1 }, options);
         const likingUsersIds = [], commentsIds = [], parentsIds = [];
         const commentsOnPost = new Map();
 
@@ -94,22 +121,20 @@ module.exports = class DatabaseFacade {
             operations.push({ updateOne: { filter: { _id: key }, update: { $inc: { commentsCount: value } } } });
         });
 
-        const db = getDb();
-        const promises = [
-            Comment.deleteComments(filter)
-            ,
-            User.removeCommentsFromLikedComments(likingUsersIds, commentsIds)
-            ,
-            db.collection('posts').bulkWrite(operations)
-            ,
-            Comment.updateComments({ _id: { $in: parentsIds } }, { $inc: { repliesCount: -1 } })
-        ];
+        await Comment.deleteComments(filter, options);
 
-        return Promise.all(promises);
+        await User.removeCommentsFromLikedComments(likingUsersIds, commentsIds, options);
+
+        if (operations.length) {
+            const db = getDb();
+            await db.collection('posts').bulkWrite(operations, options);
+        }
+
+        await Comment.updateComments({ _id: { $in: parentsIds } }, { $inc: { repliesCount: -1 } }, options)
     }
 
-    static async deletePosts(filter) {
-        const posts = await Post.getPosts(filter, { imagesUrls: 1, likingUsersIds: 1, bookmarkingUsersIds: 1 });
+    static async deletePosts(filter, options = {}) {
+        const posts = await Post.getPosts(filter, { imagesUrls: 1, likingUsersIds: 1, bookmarkingUsersIds: 1 }, options);
         const likingUsersIds = [], bookmarkingUsersIds = [], imagesUrls = [], postsIds = [];
 
         posts.forEach(post => {
@@ -119,17 +144,14 @@ module.exports = class DatabaseFacade {
             postsIds.push(post._id);
         });
 
-        const promises = [
-            Post.deletePosts(filter)
-            ,
-            DatabaseFacade.deleteComments({ postId: { $in: postsIds } })
-            ,
-            User.removePostsFromBookmarks(bookmarkingUsersIds, postsIds)
-            ,
-            User.removePostsFromLikedPosts(likingUsersIds, postsIds)
-        ];
+        await Post.deletePosts(filter, options);
 
-        await Promise.all(promises);
+        await DatabaseFacade.deleteComments({ postId: { $in: postsIds } }, options);
+
+        await User.removePostsFromBookmarks(bookmarkingUsersIds, postsIds, options);
+
+        await User.removePostsFromLikedPosts(likingUsersIds, postsIds, options);
+
         deleteImages(imagesUrls);
     }
 
