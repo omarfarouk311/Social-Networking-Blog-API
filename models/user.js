@@ -29,9 +29,8 @@ module.exports = class User {
         this._id = insertedId;
     }
 
-    static async findAndUpdateUser(filter, update, options = {}) {
+    static async findAndUpdateUser(filter, update, options = {}, imageUrl = null) {
         const db = getDb();
-        const { imageUrl } = await User.getUser(filter, { _id: 0, imageUrl: 1 });
         const updatedUser = await db.collection('users').findOneAndUpdate(filter, update, options);
         if (imageUrl) deleteImages([imageUrl]);
         return updatedUser;
@@ -64,33 +63,26 @@ module.exports = class User {
                     localField: '_id',
                     foreignField: 'creatorId',
                     as: 'posts',
+                    let: { creatorId: '$_id', creatorName: '$name', creatorImageUrl: '$imageUrl' },
                     pipeline: [
                         { $sort: { _id: -1 } },
                         { $limit: 10 },
-                        { $project: { content: 0, imagesUrls: 0, creatorId: 0 } },
+                        {
+                            $addFields: {
+                                creator: {
+                                    _id: '$$creatorId',
+                                    name: '$$creatorName',
+                                    imageUrl: '$$creatorImageUrl'
+                                }
+                            }
+                        },
+                        { $project: { content: 0, imagesUrls: 0, likingUsersIds: 0, bookmarkingUsersIds: 0 } },
                     ]
                 }
             },
             {
                 $addFields: {
-                    posts: {
-                        $map: {
-                            input: '$posts',
-                            as: 'post',
-                            in: {
-                                $mergeObjects: [
-                                    '$$post',
-                                    {
-                                        creator: {
-                                            _id: '$_id',
-                                            name: '$name'
-                                        }
-                                    }
-                                ]
-                            }
-                        }
-                    },
-                    lastId: {
+                    lastPostId: {
                         $ifNull: [{ $arrayElemAt: ['$posts._id', -1] }, null]
                     }
                 }
@@ -124,7 +116,7 @@ module.exports = class User {
             },
             {
                 $project: {
-                    [field]: { $slice: [`$${field}`, 20 * page, 20] },
+                    [field]: { $slice: [`$${field}`, 20 * (page - 1), 20] },
                     _id: 0
                 }
             },
@@ -160,7 +152,7 @@ module.exports = class User {
             },
             {
                 $project: {
-                    likedPostsIds: { $slice: ['$likedPostsIds', 10 * page, 10] },
+                    likedPostsIds: { $slice: ['$likedPostsIds', 10 * (page - 1), 10] },
                     _id: 0,
                     totalLikes: 1
                 }
@@ -183,7 +175,7 @@ module.exports = class User {
             },
             {
                 $project: {
-                    bookmarksIds: { $slice: ['$bookmarksIds', 10 * page, 10] },
+                    bookmarksIds: { $slice: ['$bookmarksIds', 10 * (page - 1), 10] },
                     _id: 0,
                     totalBookmarks: 1
                 }
@@ -198,10 +190,17 @@ module.exports = class User {
 
         return client.withSession(async session => {
             return session.withTransaction(async session => {
-                const { modifiedCount } = await User.updateUser(
+                const { followersIds } = await User.getUser({ _id: userId }, { followersIds: 1, _id: 0 });
+                const found = followersIds.some(id => id.equals(followedId));
+                if (found) {
+                    await session.abortTransaction();
+                    return null;
+                }
+
+                await User.updateUser(
                     { _id: userId },
                     {
-                        $addToSet: {
+                        $push: {
                             followingIds: {
                                 $each: [followedId],
                                 $position: 0
@@ -210,11 +209,6 @@ module.exports = class User {
                     },
                     { session }
                 );
-
-                if (!modifiedCount) {
-                    await session.abortTransaction();
-                    return null;
-                }
 
                 const { followingCount } = await User.findAndUpdateUser(
                     { _id: userId },
@@ -238,7 +232,10 @@ module.exports = class User {
                     { projection: { followersCount: 1, _id: 0 }, returnDocument: 'after', session }
                 );
 
-                return [followingCount, followersCount];
+                return {
+                    userFollowingCount: followingCount,
+                    followedUserFollowersCount: followersCount
+                };
             }, {
                 readConcern: { level: 'majority' },
                 writeConcern: { w: 'majority', journal: true },
@@ -280,7 +277,10 @@ module.exports = class User {
                     { projection: { followersCount: 1, _id: 0 }, returnDocument: 'after', session }
                 );
 
-                return [followingCount, followersCount];
+                return {
+                    userFollowingCount: followingCount,
+                    followedUserFollowersCount: followersCount
+                };
             }, {
                 readConcern: { level: 'majority' },
                 writeConcern: { w: 'majority', journal: true },
@@ -294,8 +294,15 @@ module.exports = class User {
 
         return client.withSession(async session => {
             return session.withTransaction(async session => {
+                const { bookmarksIds } = await User.getUser({ _id: userId }, { bookmarksIds: 1, _id: 0 });
+                const found = bookmarksIds.some(id => id.equals(postId));
+                if (found) {
+                    await session.abortTransaction();
+                    return null;
+                }
+
                 const filter = { _id: userId }, update = {
-                    $addToSet:
+                    $push:
                     {
                         bookmarksIds: {
                             $each: [postId],
@@ -303,12 +310,7 @@ module.exports = class User {
                         }
                     }
                 };
-                const { modifiedCount } = await User.updateUser(filter, update, { session });
-
-                if (!modifiedCount) {
-                    await session.abortTransaction();
-                    return null;
-                }
+                await User.updateUser(filter, update, { session });
 
                 const { bookmarksCount } = await Post.addBookmark(userId, postId,
                     {
@@ -358,20 +360,22 @@ module.exports = class User {
 
         return client.withSession(async session => {
             return session.withTransaction(async session => {
+                const { likedPostsIds } = await User.getUser({ _id: userId }, { likedPostsIds: 1, _id: 0 });
+                const found = likedPostsIds.some(id => id.equals(postId));
+                if (found) {
+                    await session.abortTransaction();
+                    return null;
+                }
+
                 const filter = { _id: userId }, update = {
-                    $addToSet: {
+                    $push: {
                         likedPostsIds: {
                             $each: [postId],
                             $position: 0
                         }
                     }
                 };
-                const { modifiedCount } = await User.updateUser(filter, update, { session });
-
-                if (!modifiedCount) {
-                    await session.abortTransaction();
-                    return null;
-                }
+                await User.updateUser(filter, update, { session });
 
                 const { likes } = await Post.addLike(userId, postId,
                     {

@@ -7,12 +7,12 @@ const { validatePage } = require('../middlewares/validation/user');
 const router = Router();
 
 router.route('/')
-    .post(checkPostExistence, userController.addBookmark)
+    .post(validatePostId, validateStructure, handleValidationErrors, checkPostExistence, userController.addBookmark)
     .get(validatePage, validateStructure, handleValidationErrors, userController.getBookmarks)
     .all(notAllowed);
 
 router.route('/:postId')
-    .delete(validatePostId, validateStructure, handleValidationErrors, userController.removeBookmark)
+    .delete(validatePostId, validateStructure, handleValidationErrors, checkPostExistence, userController.removeBookmark)
     .all(notAllowed);
 
 router.all('*', notFound);

@@ -24,11 +24,10 @@ module.exports = class Post {
         this._id = insertedId;
     }
 
-    static async findAndUpdatePost(filter, update, options) {
+    static async findAndUpdatePost(filter, update, options = {}, imagesUrls = []) {
         const db = getDb();
-        const { imagesUrls } = await Post.getPost(filter, { _id: 0, imagesUrls: 1 });
         const updatedPost = await db.collection('posts').findOneAndUpdate(filter, update, options);
-        deleteImages(imagesUrls);
+        if (imagesUrls.length) deleteImages(imagesUrls);
         return updatedPost;
     }
 
@@ -149,12 +148,16 @@ module.exports = class Post {
                 }
             },
             {
-                $project: {
-                    lastId: {
-                        $ifNull: [{ $arrayElemAt: ['comments._id', -1] }, null]
+                $addFields: {
+                    lastCommentId: {
+                        $ifNull: [{ $arrayElemAt: ['$comments._id', -1] }, null]
                     },
                     liked: { $in: [userId, '$likingUsersIds'] },
                     bookmarked: { $in: [userId, '$bookmarkingUsersIds'] },
+                }
+            },
+            {
+                $project: {
                     bookmarkingUsersIds: 0,
                     likingUsersIds: 0,
                 }
@@ -177,7 +180,7 @@ module.exports = class Post {
             },
             {
                 $project: {
-                    likingUsersIds: { $slice: [`$likingUsersIds`, 20 * page, 20] },
+                    likingUsersIds: { $slice: [`$likingUsersIds`, 20 * (page - 1), 20] },
                     _id: 0
                 }
             },

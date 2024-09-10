@@ -51,7 +51,7 @@ exports.getPost = async (req, res, next) => {
 };
 
 exports.createPost = async (req, res, next) => {
-    const { body } = req.body, { userId } = req;
+    const { body } = req, { userId } = req;
 
     try {
         if (req.invalidFileType) {
@@ -71,7 +71,7 @@ exports.createPost = async (req, res, next) => {
             likingUsersIds: [],
             commentsCount: 0,
             bookmarksCount: 0,
-            imagesUrls
+            imagesUrls,
         });
 
         await post.createPost();
@@ -90,7 +90,7 @@ exports.deletePost = async (req, res, next) => {
 
     try {
         await DatabaseFacade.deletePost(post);
-        return res.status(204).json({ message: 'Post deleted successfully' });
+        return res.status(204).send();
     }
     catch (err) {
         return next(err);
@@ -115,7 +115,9 @@ exports.updatePost = async (req, res, next) => {
             projection[key] = 1;
         }
 
-        const updatedPost = await Post.findAndUpdatePost({ _id: post._id }, { $set: body }, { projection, returnDocument: 'after' });
+        const updatedPost = await Post.findAndUpdatePost({ _id: post._id }, { $set: body },
+            { projection, returnDocument: 'after' }, post.imagesUrls);
+
         return res.status(200).json({
             message: 'Post updated successfully',
             ...updatedPost
@@ -127,7 +129,7 @@ exports.updatePost = async (req, res, next) => {
 };
 
 exports.getPostLikers = async (req, res, next) => {
-    const { post } = req, { page } = req.query;
+    const { post } = req, { page = 1 } = req.query;
 
     try {
         const users = await Post.getPostLikers(page, post._id);
@@ -144,20 +146,20 @@ exports.getPostLikers = async (req, res, next) => {
 
 exports.updatePostLikes = async (req, res, next) => {
     const { userId, post } = req, { action } = req.body;
-    let updatedPost;
+    let likes;
 
     try {
         if (action === 1) {
-            updatedPost = await User.likePost(userId, post._id);
-            if (!updatedPost) {
+            likes = await User.likePost(userId, post._id);
+            if (likes === null) {
                 const err = new Error('Post already liked');
                 err.statusCode = 409;
                 throw err;
             }
         }
         else {
-            updatedPost = await User.unlikePost(userId, post._id);
-            if (!updatedPost) {
+            likes = await User.unlikePost(userId, post._id);
+            if (likes === null) {
                 const err = new Error("Post isn't liked");
                 err.statusCode = 409;
                 throw err;
@@ -165,8 +167,8 @@ exports.updatePostLikes = async (req, res, next) => {
         }
 
         return res.status(200).json({
-            message: 'Post Likes updated successfully',
-            ...updatedPost
+            message: action === 1 ? 'Post liked successfully' : 'Post unliked successfully',
+            likes
         });
     }
     catch (err) {

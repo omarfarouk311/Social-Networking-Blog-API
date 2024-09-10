@@ -1,3 +1,5 @@
+const { deleteImages } = require('../util/images');
+
 exports.notAllowed = (req, res, next) => {
     const err = new Error('Method not allowed');
     err.statusCode = 405;
@@ -16,6 +18,13 @@ exports.errorHandlingMiddleware = (err, req, res, next) => {
     }
 
     console.error(err);
+
+    if (req.file) {
+        deleteImages([req.file.path]);
+    }
+    if (req.files) {
+        deleteImages(req.files.map(file => file.path));
+    }
 
     if (Array.isArray(err)) {
         return res.status(422).send({

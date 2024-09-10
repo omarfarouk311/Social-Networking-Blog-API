@@ -85,8 +85,7 @@ exports.validateSignup = [
 ];
 
 exports.validatePage = query('page')
-    .notEmpty()
-    .withMessage('page number must be passed as a query parameter')
+    .optional()
     .isInt({ gt: -1 })
     .withMessage('Invalid pagination page, it must be 0 or more')
     .bail()

@@ -1,11 +1,10 @@
 const Post = require('../../models/post');
 const { ObjectId } = require('mongodb');
 const { checkExact, body, validationResult, query, buildCheckFunction } = require('express-validator');
-const { deleteImages } = require('../../util/images');
 const checkPostId = buildCheckFunction(['body', 'params']);
 
 exports.checkPostExistence = async (req, res, next) => {
-    const { postId } = req.params || req.body;
+    const postId = req.params.postId || req.body.postId;
 
     try {
         const post = await Post.getPost({ _id: postId }, { _id: 1 });
@@ -89,13 +88,13 @@ exports.validatePostUpdating = [
 exports.validateLikesUpdating = body('action')
     .notEmpty()
     .withMessage('Action must be passed')
-    .isInt({ allow_leading_zeroes: false, max: 1, min: -1 })
+    .custom(action => action === 1 || action === -1)
     .withMessage('Action value must be 1 or -1')
     .bail()
     .customSanitizer(action => parseInt(action));
 
 exports.validateQueryParams = [
-    validateLastId()
+    validateLastId().optional()
     ,
     query('tags')
         .optional()
@@ -120,13 +119,6 @@ exports.handleValidationErrors = (req, res, next) => {
     let errors = validationResult(req);
 
     if (!errors.isEmpty()) {
-        if (req.file) {
-            deleteImages([req.file.path]);
-        }
-        if (req.files) {
-            deleteImages(req.files.map(file => file.path));
-        }
-
         errors = errors.array();
         const err = errors.find(err => err.type === 'unknown_fields');
         if (err) {

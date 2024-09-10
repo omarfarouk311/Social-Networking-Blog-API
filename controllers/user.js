@@ -1,19 +1,22 @@
 const User = require('../models/user');
 const Post = require('../models/post');
 const DatabaseFacade = require('../models/database facade');
+const { use } = require('../routes/comments');
 
 exports.addBookmark = async (req, res, next) => {
     const { userId, post } = req;
 
     try {
-        const result = await User.addBookmark(userId, post._id);
-        if (!result) {
+        const bookmarksCount = await User.addBookmark(userId, post._id);
+        if (bookmarksCount === null) {
             const err = new Error('Post already bookmarked');
             err.statusCode = 409;
             throw err;
         }
+
         return res.status(200).json({
             message: 'Post added to bookmarks successfully',
+            bookmarksCount
         });
     }
     catch (err) {
@@ -25,13 +28,17 @@ exports.removeBookmark = async (req, res, next) => {
     const { userId, post } = req;
 
     try {
-        const result = await User.removeBookmark(userId, post._id);
-        if (!result) {
+        const bookmarksCount = await User.removeBookmark(userId, post._id);
+        if (bookmarksCount === null) {
             const err = new Error("Post isn't bookmarked");
             err.statusCode = 409;
             throw err;
         }
-        return res.status(204).json({ message: 'Post removed from bookmarks successfully' });
+
+        return res.status(200).json({
+            message: 'Post removed from bookmarks successfully',
+            bookmarksCount
+        });
     }
     catch (err) {
         return next(err);
@@ -39,7 +46,7 @@ exports.removeBookmark = async (req, res, next) => {
 };
 
 exports.getBookmarks = async (req, res, next) => {
-    const { userId } = req, { page } = req.query;
+    const { userId } = req, { page = 1 } = req.query;
 
     try {
         const { bookmarksIds, totalBookmarks } = await User.getUserBookmarks(page, userId)
@@ -70,12 +77,9 @@ exports.updateFollowers = async (req, res, next) => {
             throw err;
         }
 
-        //destructuring result array that contains updated user following count & followed user followers count
-        const [userFollowingCount, followedUserFollowersCount] = result;
         return res.status(200).json({
-            message: 'Following and followers updated successfully',
-            userFollowingCount,
-            followedUserFollowersCount
+            message: action === 1 ? 'User followed successfully' : 'User unfollowed successfully',
+            ...result
         });
     }
     catch (err) {
@@ -113,9 +117,7 @@ exports.deleteUser = async (req, res, next) => {
                 signed: false,
                 secure: true,
             })
-            .json({
-                message: 'User deleted successfully'
-            });
+            .send()
     }
     catch (err) {
         return next(err);
@@ -140,7 +142,10 @@ exports.updateUser = async (req, res, next) => {
             projection[key] = 1;
         }
 
-        const updatedUser = await User.findAndUpdateUser({ _id: userId }, { $set: body }, { projection, returnDocument: 'after' });
+        const { imageUrl } = await User.getUser({ _id: userId }, { _id: 0, imageUrl: 1 });
+        const updatedUser = await User.findAndUpdateUser({ _id: userId }, { $set: body },
+            { projection, returnDocument: 'after' }, imageUrl);
+
         return res.status(200).json({
             message: 'User data updated successfully',
             ...updatedUser
@@ -193,7 +198,7 @@ function getUsers(options) {
     const { field } = options;
     return async (req, res, next) => {
         const userId = req.params.userId || req.userId;
-        const { page } = req.query;
+        const { page = 1 } = req.query;
         try {
             const users = await User.getUsersInfo({ _id: userId }, field, page);
             return res.status(200).json({
@@ -213,7 +218,7 @@ exports.getUserFollowing = getUsers({ field: 'followingIds' });
 exports.getUserFollowers = getUsers({ field: 'followersIds' });
 
 exports.getUserLikes = async (req, res, next) => {
-    const { userId } = req, { page } = req.query;
+    const { userId } = req, { page = 1 } = req.query;
 
     try {
         const { likedPostsIds, totalLikes } = await User.getUserLikesIds(page, userId);
