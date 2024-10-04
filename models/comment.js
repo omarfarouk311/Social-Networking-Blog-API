@@ -1,4 +1,4 @@
-const { getDb } = require('../util/database');
+const { getDb, getClient } = require('../util/database');
 const Post = require('./post');
 
 module.exports = class Comment {
@@ -15,16 +15,22 @@ module.exports = class Comment {
         this.likingUsersIds = likingUsersIds;
     }
 
-    async createComment(postId) {
-        const db = getDb();
-        const promises = [db.collection('comments').insertOne(this),
-        Post.updatePost({ _id: postId }, { $inc: { commentsCount: 1 } })];
+    createComment(postId) {
+        const client = getClient();
 
-        if (this.parentsIds.length) {
-            promises.push(Comment.updateComments({ _id: this.parentsIds }, { $inc: { repliesCount: 1 } }));
-        }
-        const { insertedId } = await Promise.all(promises)[0];
-        this._id = insertedId;
+        return client.withSession(async session => {
+            return session.withTransaction(async session => {
+                const db = getDb();
+                const { insertedId } = await db.collection('comments').insertOne(this, { session });
+                await Post.updatePost({ _id: postId }, { $inc: { commentsCount: 1 } }, { session })
+                if (this.parentsIds.length) {
+                    await Comment.updateComments({ _id: { $in: this.parentsIds } }, { $inc: { repliesCount: 1 } }, { session });
+                }
+                this._id = insertedId;
+            }, {
+                writeConcern: { w: 'majority', journal: true },
+            });
+        });
     }
 
     static findAndUpdateComment(filter, update, options) {
@@ -42,7 +48,7 @@ module.exports = class Comment {
         return db.collection('comments').updateMany(filter, update, options);
     }
 
-    static async getCommentsInfo(filter, userId) {
+    static async getCommentsInfo(filter, viewerId) {
         const db = getDb();
         const comments = await db.collection('comments').aggregate([
             {
@@ -74,7 +80,13 @@ module.exports = class Comment {
                 $unwind: '$creator'
             },
             {
-                $addFields: { liked: { $in: [userId, '$likingUsersIds'] } }
+                $addFields: { liked: { $in: [viewerId, '$likingUsersIds'] } }
+            },
+            {
+                $project: {
+                    likingUsersIds: 0,
+                    parentsIds: 0
+                }
             }
         ]).toArray();
 
@@ -100,7 +112,7 @@ module.exports = class Comment {
             },
             {
                 $project: {
-                    likingUsersIds: { $slice: [`$likingUsersIds`, 20 * page, 20] },
+                    likingUsersIds: { $slice: [`$likingUsersIds`, 20 * (page - 1), 20] },
                     _id: 0
                 }
             },
@@ -148,7 +160,7 @@ module.exports = class Comment {
 
     static removeLike(userId, commentId, options = {}) {
         const filter = { _id: commentId }, update = { $inc: { likes: -1 }, $pull: { likingUsersIds: userId } };
-        return Comment.findAndUpdateComment(filter, update, { likes: 1 }, options);
+        return Comment.findAndUpdateComment(filter, update, options);
     }
 
 }

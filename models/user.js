@@ -5,7 +5,7 @@ const Comment = require('./comment.js');
 
 module.exports = class User {
     constructor({ _id, email, password, name, imageUrl, followingIds, followersIds, bookmarksIds, likedPostsIds, bio, location,
-        creationDate, followingCount, followersCount, likedCommentsIds }) {
+        creationDate, followingCount, followersCount, likedCommentsIds, resetToken, resetTokenExpiry }) {
         this._id = _id;
         this.email = email;
         this.password = password;
@@ -21,6 +21,8 @@ module.exports = class User {
         this.creationDate = creationDate;
         this.followingCount = followingCount;
         this.followersCount = followersCount;
+        this.resetToken = resetToken;
+        this.resetTokenExpiry = resetTokenExpiry;
     }
 
     async createUser() {
@@ -51,7 +53,7 @@ module.exports = class User {
         return db.collection('users').deleteOne(filter, options);
     }
 
-    static async getUserInfo(filter) {
+    static async getUserInfo(filter, viewerId) {
         const db = getDb();
         const result = await db.collection('users').aggregate([
             {
@@ -73,10 +75,18 @@ module.exports = class User {
                                     _id: '$$creatorId',
                                     name: '$$creatorName',
                                     imageUrl: '$$creatorImageUrl'
-                                }
+                                },
+                                liked: { $in: [viewerId, '$likingUsersIds'] }
                             }
                         },
-                        { $project: { content: 0, imagesUrls: 0, likingUsersIds: 0, bookmarkingUsersIds: 0 } },
+                        {
+                            $project: {
+                                content: 0,
+                                imagesUrls: 0,
+                                likingUsersIds: 0,
+                                bookmarkingUsersIds: 0
+                            }
+                        },
                     ]
                 }
             },
@@ -96,6 +106,8 @@ module.exports = class User {
                     followersIds: 0,
                     followingIds: 0,
                     likedPostsIds: 0,
+                    resetToken: 0,
+                    resetTokenExpiry: 0
                 }
             }
         ]).toArray();
@@ -190,8 +202,8 @@ module.exports = class User {
 
         return client.withSession(async session => {
             return session.withTransaction(async session => {
-                const { followersIds } = await User.getUser({ _id: userId }, { followersIds: 1, _id: 0 });
-                const found = followersIds.some(id => id.equals(followedId));
+                const { followingIds } = await User.getUser({ _id: userId }, { followingIds: 1, _id: 0 });
+                const found = followingIds.some(id => id.equals(followedId));
                 if (found) {
                     await session.abortTransaction();
                     return null;
@@ -249,7 +261,7 @@ module.exports = class User {
 
         return client.withSession(async session => {
             return session.withTransaction(async session => {
-                const { modifiedCount } = User.updateUser(
+                const { modifiedCount } = await User.updateUser(
                     { _id: userId },
                     { $pull: { followingIds: followedId } },
                     { session }

@@ -24,8 +24,6 @@ exports.signUp = async (req, res, next) => {
         }
 
         body.password = await bcrypt.hash(password, 15);
-        delete body.confirmatonPassword;
-
         const user = new User({
             ...body,
             bookmarksIds: [],
@@ -36,7 +34,9 @@ exports.signUp = async (req, res, next) => {
             followersCount: 0,
             followingCount: 0,
             creationDate: new Date(Date.now()),
-            imageUrl: req.file ? req.file.path : null
+            imageUrl: req.file ? req.file.path : null,
+            resetToken: null,
+            resetTokenExpiry: null
         });
 
         await user.createUser();
@@ -102,7 +102,8 @@ exports.logIn = async (req, res, next) => {
                 })
                 .json({
                     message: 'User logged in successfully',
-                    token
+                    token,
+                    userId: user._id
                 });
         });
     }

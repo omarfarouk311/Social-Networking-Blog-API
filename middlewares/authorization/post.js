@@ -6,7 +6,7 @@ function authorizePostModification(operation) {
         const projection = operation ? { imagesUrls: 1 } : { imagesUrls: 1, bookmarkingUsersIds: 1, likingUsersIds: 1 };
 
         try {
-            const post = await Post.getPost({ creatorId: userId }, projection);
+            const post = await Post.getPost({ creatorId: userId, _id: postId }, projection);
             if (!post) {
                 const exist = await Post.getPost({ _id: postId }, { _id: 1 });
                 if (exist) {

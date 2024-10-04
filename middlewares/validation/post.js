@@ -1,6 +1,6 @@
 const Post = require('../../models/post');
 const { ObjectId } = require('mongodb');
-const { checkExact, body, validationResult, query, buildCheckFunction } = require('express-validator');
+const { body, validationResult, query, buildCheckFunction } = require('express-validator');
 const checkPostId = buildCheckFunction(['body', 'params']);
 
 exports.checkPostExistence = async (req, res, next) => {
@@ -22,10 +22,6 @@ exports.checkPostExistence = async (req, res, next) => {
         return next(err);
     }
 };
-
-exports.validateStructure = checkExact([], {
-    message: 'Bad request, request structure is invalid because too many fields are passed'
-});
 
 const validatePostId = () => checkPostId('postId')
     .notEmpty()
@@ -98,14 +94,12 @@ exports.validateQueryParams = [
     ,
     query('tags')
         .optional()
-        .isString()
-        .withMessage('tags values must be a string')
-        .bail()
-        .customSanitizer(tags => tags.split(','))
+        .isArray()
+        .withMessage("Post tags must be an array")
     ,
     query('following')
         .optional()
-        .isBoolean({ strict: true })
+        .isBoolean()
         .withMessage('following parameter must be true or false')
         .bail()
         .customSanitizer(following => Boolean(following))

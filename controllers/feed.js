@@ -14,6 +14,7 @@ exports.getPosts = async (req, res, next) => {
     }
     if (following) {
         const { followingIds } = await User.getUser({ _id: userId }, { _id: 0, followingIds: 1 });
+        followingIds.push(userId);
         filter.creatorId = { $in: followingIds }
     }
 
@@ -75,6 +76,9 @@ exports.createPost = async (req, res, next) => {
         });
 
         await post.createPost();
+        delete post.likingUsersIds;
+        delete post.bookmarkingUsersIds;
+
         return res.status(201).json({
             message: 'Post created successfully!',
             ...post
@@ -106,6 +110,8 @@ exports.updatePost = async (req, res, next) => {
             err.statusCode = 422;
             throw err;
         }
+
+        body.imagesUrls = []
         if (req.files) {
             body.imagesUrls = req.files.map(file => file.path);
         }

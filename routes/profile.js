@@ -1,40 +1,45 @@
 const { Router } = require('express');
-const { notAllowed } = require('../middlewares/errors');
-const { validateLastId, handleValidationErrors, validateStructure } = require('../middlewares/validation/post');
+const { notAllowed, notFound } = require('../middlewares/errors');
+const { validateLastId, handleValidationErrors } = require('../middlewares/validation/post');
 const { getUserProfile, getUserPosts, getUserLikes, getUserFollowing, getUserFollowers,
     updateFollowers, getUserData, updateUser, deleteUser } = require('../controllers/user');
-const { validateFollowAction, validateUserCreation, validatePage } = require('../middlewares/validation/user');
+const { validateFollowAction, validateUserCreation, validatePage, checkUserExistence,
+    validateUserId } = require('../middlewares/validation/user');
+const { authorizeUser } = require('../middlewares/authorization/user');
 const upload = require('../util/multer configurations').single('image');
-const userRouter = require('./user');
-const router = Router();
+const { authenticateUser } = require('../controllers/auth');
+const router = Router({ mergeParams: true });
+
+router.use(authenticateUser);
 
 router.route('/')
-    .get(getUserProfile)
+    .get(validateUserId, handleValidationErrors, checkUserExistence, getUserProfile)
     .all(notAllowed);
 
 router.route('/account')
+    .all(validateUserId, handleValidationErrors, checkUserExistence, authorizeUser)
     .get(getUserData)
-    .put(upload, validateUserCreation, validateStructure, handleValidationErrors, updateUser)
+    .put(upload, validateUserCreation, handleValidationErrors, updateUser)
     .delete(deleteUser)
     .all(notAllowed);
 
 router.route('/posts')
-    .get(validateLastId, handleValidationErrors, getUserPosts)
+    .get(validateUserId, validateLastId, handleValidationErrors, checkUserExistence, getUserPosts)
     .all(notAllowed);
 
 router.route('/likes')
-    .get(validatePage, handleValidationErrors, getUserLikes)
+    .get(validateUserId, validatePage, handleValidationErrors, checkUserExistence, authorizeUser, getUserLikes)
     .all(notAllowed);
 
 router.route('/following')
-    .get(validatePage, handleValidationErrors, getUserFollowing)
-    .patch(validateFollowAction, handleValidationErrors, updateFollowers)
+    .get(validateUserId, validatePage, handleValidationErrors, checkUserExistence, getUserFollowing)
+    .patch(validateUserId, validateFollowAction, handleValidationErrors, checkUserExistence, authorizeUser, updateFollowers)
     .all(notAllowed);
 
 router.route('/followers')
-    .get(validatePage, handleValidationErrors, getUserFollowers)
+    .get(validateUserId, validatePage, handleValidationErrors, checkUserExistence, getUserFollowers)
     .all(notAllowed);
 
-router.use('/:userId', userRouter);
+router.all('*', notFound);
 
 module.exports = router;

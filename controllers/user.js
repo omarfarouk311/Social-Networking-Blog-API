@@ -1,7 +1,6 @@
 const User = require('../models/user');
 const Post = require('../models/post');
 const DatabaseFacade = require('../models/database facade');
-const { use } = require('../routes/comments');
 
 exports.addBookmark = async (req, res, next) => {
     const { userId, post } = req;
@@ -46,11 +45,11 @@ exports.removeBookmark = async (req, res, next) => {
 };
 
 exports.getBookmarks = async (req, res, next) => {
-    const { userId } = req, { page = 1 } = req.query;
+    const { userId } = req, { page = 1 } = req.query, { userId: viewerId } = req;;
 
     try {
         const { bookmarksIds, totalBookmarks } = await User.getUserBookmarks(page, userId)
-        const posts = await Post.getPostsInfo({ _id: { $in: bookmarksIds } }, userId, true);
+        const posts = await Post.getPostsInfo({ _id: { $in: bookmarksIds } }, viewerId, true);
         return res.status(200).json({
             message: 'User bookmarks fetched successfully',
             posts,
@@ -64,7 +63,7 @@ exports.getBookmarks = async (req, res, next) => {
 };
 
 exports.updateFollowers = async (req, res, next) => {
-    const { userId } = req, { followedId, action } = req.body;
+    const { userId } = req.params, { followedId, action } = req.body;
 
     try {
         let result;
@@ -88,7 +87,7 @@ exports.updateFollowers = async (req, res, next) => {
 };
 
 exports.deleteUser = async (req, res, next) => {
-    const { userId } = req;
+    const { userId } = req.params;
 
     try {
         const projection = {
@@ -125,7 +124,7 @@ exports.deleteUser = async (req, res, next) => {
 };
 
 exports.updateUser = async (req, res, next) => {
-    const { body, userId } = req;
+    const { body } = req, { userId } = req.params;
 
     try {
         if (req.invalidFileType) {
@@ -133,6 +132,8 @@ exports.updateUser = async (req, res, next) => {
             err.statusCode = 422;
             throw err;
         }
+
+        body.imageUrl = null;
         if (req.file) {
             body.imageUrl = req.file.path;
         }
@@ -157,10 +158,10 @@ exports.updateUser = async (req, res, next) => {
 };
 
 exports.getUserProfile = async (req, res, next) => {
-    const userId = req.params.userId || req.userId;
+    const { userId } = req.params, { userId: viewerId } = req;;
 
     try {
-        const userProfile = await User.getUserInfo({ _id: userId });
+        const userProfile = await User.getUserInfo({ _id: userId }, viewerId);
 
         if (userProfile) {
             return res.status(200).json({
@@ -180,7 +181,7 @@ exports.getUserProfile = async (req, res, next) => {
 };
 
 exports.getUserData = async (req, res, next) => {
-    const { userId } = req;
+    const { userId } = req.params;
 
     try {
         const userData = await User.getUser({ _id: userId }, { email: 1, name: 1, location: 1, bio: 1, imageUrl: 1, creationDate: 1 });
@@ -197,12 +198,12 @@ exports.getUserData = async (req, res, next) => {
 function getUsers(options) {
     const { field } = options;
     return async (req, res, next) => {
-        const userId = req.params.userId || req.userId;
+        const { userId } = req.params;
         const { page = 1 } = req.query;
         try {
             const users = await User.getUsersInfo({ _id: userId }, field, page);
             return res.status(200).json({
-                message: 'Users fetched successfully',
+                message: field === 'followingIds' ? 'Following list fetched successfully' : 'Followers list fetched successfully',
                 users,
                 page
             })
@@ -218,11 +219,11 @@ exports.getUserFollowing = getUsers({ field: 'followingIds' });
 exports.getUserFollowers = getUsers({ field: 'followersIds' });
 
 exports.getUserLikes = async (req, res, next) => {
-    const { userId } = req, { page = 1 } = req.query;
+    const { userId } = req.params, { page = 1 } = req.query, { userId: viewerId } = req;;
 
     try {
         const { likedPostsIds, totalLikes } = await User.getUserLikesIds(page, userId);
-        const posts = await Post.getPostsInfo({ _id: { $in: likedPostsIds } }, userId, true);
+        const posts = await Post.getPostsInfo({ _id: { $in: likedPostsIds } }, viewerId, true);
         return res.status(200).json({
             message: 'User liked posts fetched successfully',
             posts,
@@ -236,14 +237,14 @@ exports.getUserLikes = async (req, res, next) => {
 };
 
 exports.getUserPosts = async (req, res, next) => {
-    const { userId } = req.params || req, { lastId } = req.query;
+    const { userId } = req.params, { lastId } = req.query, { userId: viewerId } = req;;
     const filter = { creatorId: userId };
     if (lastId) {
         filter._id = { $lt: lastId };
     }
 
     try {
-        const result = await Post.getPostsInfo(filter, userId);
+        const result = await Post.getPostsInfo(filter, viewerId);
         return res.status(200).json({
             message: 'User posts fetched successfully',
             ...result

@@ -15,7 +15,7 @@ module.exports = class DatabaseFacade {
 
                 await DatabaseFacade.deletePosts({ creatorId: filters._id }, { session });
 
-                await DatabaseFacade.deleteComments({ creatorId: filters._id }, { session });
+                await DatabaseFacade.deleteUserComments({ creatorId: filters._id }, { session });
 
                 await Post.updatePosts({ _id: { $in: filters.likedPostsIds } }, {
                     $inc: { likes: -1 },
@@ -46,8 +46,7 @@ module.exports = class DatabaseFacade {
                 await db.collection('tokens').deleteOne({ userId: filters._id }, { session });
                 await db.collection('refresh tokens').deleteOne({ userId: filters._id }, { session });
 
-                const { imageUrl } = filters;
-                deleteImages([imageUrl]);
+                deleteImages([filters.imageUrl]);
             }, {
                 readConcern: { level: 'local' },
                 writeConcern: { w: 'majority', journal: true },
@@ -63,14 +62,13 @@ module.exports = class DatabaseFacade {
             return session.withTransaction(async session => {
                 await Post.deletePost({ _id: filters._id }, { session });
 
-                await DatabaseFacade.deleteComments({ postId: filters._id }, { session });
+                await DatabaseFacade.deletePostComments({ postId: filters._id }, { session });
 
                 await User.removePostFromBookmarks(filters.bookmarkingUsersIds, filters._id, { session });
 
                 await User.removePostFromLikedPosts(filters.likingUsersIds, filters._id, { session });
 
-                const { imagesUrls } = filters
-                deleteImages(imagesUrls);
+                deleteImages(filters.imagesUrls);
             }, {
                 readConcern: { level: 'local' },
                 writeConcern: { w: 'majority', journal: true },
@@ -86,15 +84,19 @@ module.exports = class DatabaseFacade {
             return session.withTransaction(async session => {
                 await Comment.deleteComment({ _id: filters._id }, { session });
 
-                await DatabaseFacade.deleteComments({ parentsIds: filters._id }, { session });
+                await User.removeCommentFromLikedComments(filters.likingUsersIds, filters._id, { session });
 
-                await User.removeCommentFromLikedComments(filters.likingUsersIds, filters.commentId, { session });
+                await DatabaseFacade.deletePostComments({ parentsIds: filters._id }, { session });
 
-                await Post.updatePost({ _id: filters.postId }, { $inc: { commentsCount: -1 } }, { session });
+                await Post.updatePost({ _id: filters.postId }, { $inc: { commentsCount: -filters.repliesCount - 1 } }, { session });
 
                 if (filters.parentsIds.length) {
-                    await Comment.updateComments({ _id: { $in: filters.parentsIds } }, { $inc: { repliesCount: -1 } }, { session });
+                    await Comment.updateComments(
+                        { _id: { $in: filters.parentsIds } },
+                        { $inc: { repliesCount: -filters.repliesCount - 1 } },
+                        { session });
                 }
+
             }, {
                 readConcern: { level: 'local' },
                 writeConcern: { w: 'majority', journal: true },
@@ -103,38 +105,49 @@ module.exports = class DatabaseFacade {
         });
     }
 
-    static async deleteComments(filter, options = {}) {
-        const comments = await Comment.getComments(filter, { likingUsersIds: 1, postId: 1, parentsIds: 1 }, options);
-        const likingUsersIds = [], commentsIds = [], parentsIds = [];
-        const commentsOnPost = new Map();
+    static async deleteUserComments(filter, options = {}) {
+        const comments = await Comment.getComments(filter, { likingUsersIds: 1, postId: 1, parentsIds: 1, repliesCount: 1 }, options).toArray();
+        if (!comments.length) return;
 
+        comments.sort((a, b) => a.parentsIds.length - b.parentsIds.length);
+
+        for (const comment of comments) {
+            const { deletedCount } = await Comment.deleteComment({ _id: comment._id }, options);
+            if (!deletedCount) continue;
+
+            await Comment.deleteComment({ _id: comment._id }, options);
+
+            await User.removeCommentFromLikedComments(comment.likingUsersIds, comment._id, options);
+
+            await DatabaseFacade.deletePostComments({ parentsIds: comment._id }, options);
+
+            await Post.updatePost({ _id: comment.postId }, { $inc: { commentsCount: -comment.repliesCount - 1 } }, options);
+
+            if (comment.parentsIds.length) {
+                await Comment.updateComments(
+                    { _id: { $in: comment.parentsIds } },
+                    { $inc: { repliesCount: -comment.repliesCount - 1 } },
+                    options
+                );
+            }
+        }
+    }
+
+    static async deletePostComments(filter, options = {}) {
+        const comments = await Comment.getComments(filter, { likingUsersIds: 1 }, options).toArray();
+        const likingUsersIds = [], commentsIds = [];
         comments.forEach(comment => {
             likingUsersIds.push(...comment.likingUsersIds);
             commentsIds.push(comment._id);
-            const cnt = commentsOnPost.get(comment.postId);
-            commentsOnPost.set(comment.postId, cnt ? cnt + 1 : 1);
-            if (comment.parentsIds.length) parentsIds.push(...comment.parentsIds);
-        });
-
-        const operations = [];
-        commentsOnPost.forEach(([key, value]) => {
-            operations.push({ updateOne: { filter: { _id: key }, update: { $inc: { commentsCount: value } } } });
         });
 
         await Comment.deleteComments(filter, options);
 
         await User.removeCommentsFromLikedComments(likingUsersIds, commentsIds, options);
-
-        if (operations.length) {
-            const db = getDb();
-            await db.collection('posts').bulkWrite(operations, options);
-        }
-
-        await Comment.updateComments({ _id: { $in: parentsIds } }, { $inc: { repliesCount: -1 } }, options)
     }
 
     static async deletePosts(filter, options = {}) {
-        const posts = await Post.getPosts(filter, { imagesUrls: 1, likingUsersIds: 1, bookmarkingUsersIds: 1 }, options);
+        const posts = await Post.getPosts(filter, { imagesUrls: 1, likingUsersIds: 1, bookmarkingUsersIds: 1 }, options).toArray();
         const likingUsersIds = [], bookmarkingUsersIds = [], imagesUrls = [], postsIds = [];
 
         posts.forEach(post => {
@@ -146,7 +159,7 @@ module.exports = class DatabaseFacade {
 
         await Post.deletePosts(filter, options);
 
-        await DatabaseFacade.deleteComments({ postId: { $in: postsIds } }, options);
+        await DatabaseFacade.deletePostComments({ postId: { $in: postsIds } }, options);
 
         await User.removePostsFromBookmarks(bookmarkingUsersIds, postsIds, options);
 

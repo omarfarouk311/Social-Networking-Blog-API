@@ -3,7 +3,7 @@ const User = require('../models/user');
 const DatabaseFacade = require('../models/database facade');
 
 exports.getComments = async (req, res, next) => {
-    const { lastId, parentId } = req.query, { userId } = req, { postId } = req.params;
+    const { lastId, parentId = null } = req.query, { userId } = req, { postId } = req.params;
     const filter = { postId, parentId };
     if (lastId) {
         filter._id = { $lt: lastId };
@@ -22,13 +22,13 @@ exports.getComments = async (req, res, next) => {
 };
 
 exports.createComment = async (req, res, next) => {
-    const { userId } = req, { postId } = req.params, { content, parentId } = req.body;
+    const { userId } = req, { postId } = req.params, { content, parentId = null } = req.body;
 
     try {
         const parentsIds = [];
         if (parentId) {
             const { parentsIds: parentParentsIds } = await Comment.getComment({ _id: parentId }, { parentsIds: 1, _id: 0 });
-            parentsIds.push(...parentParentsIds, parentId);
+            parentsIds.unshift(parentId, ...parentParentsIds);
         }
 
         const comment = new Comment({
@@ -44,6 +44,9 @@ exports.createComment = async (req, res, next) => {
         });
 
         await comment.createComment(postId);
+
+        delete comment.likingUsersIds;
+        delete comment.parentsIds;
         return res.status(201).json({
             message: 'Comment created successfully',
             ...comment
@@ -59,7 +62,7 @@ exports.deleteComment = async (req, res, next) => {
 
     try {
         await DatabaseFacade.deleteComment({ ...comment, postId });
-        return res.status(204).json({ message: 'Comment deleted successfully' });
+        return res.status(204).send();
     }
     catch (err) {
         return next(err);
@@ -75,10 +78,14 @@ exports.updateComment = async (req, res, next) => {
             projection[key] = 1;
         }
 
-        const updatedComment = await Comment.findAndUpdateComment({ _id: comment._id }, { $set: body },
-            { projection, returnDocument: 'after' });
+        const updatedComment = await Comment.findAndUpdateComment(
+            { _id: comment._id },
+            { $set: body },
+            { projection, returnDocument: 'after' }
+        );
+
         return res.status(200).json({
-            message: 'Post updated successfully',
+            message: 'Comment updated successfully',
             ...updatedComment
         });
     }
@@ -88,12 +95,12 @@ exports.updateComment = async (req, res, next) => {
 };
 
 exports.getCommentsLikers = async (req, res, next) => {
-    const { comment } = req, { page } = req.query;
+    const { comment } = req, { page = 1 } = req.query;
 
     try {
         const users = await Comment.getCommentLikers(page, comment._id);
         return res.status(200).json({
-            message: 'Post likers fetched successfully',
+            message: 'Comment likers fetched successfully',
             users,
             page
         });
@@ -105,20 +112,20 @@ exports.getCommentsLikers = async (req, res, next) => {
 
 exports.updateCommentLikes = async (req, res, next) => {
     const { userId, comment } = req, { action } = req.body;
-    let updatedComment;
+    let likes;
 
     try {
         if (action === 1) {
-            updatedComment = await User.likeComment(userId, comment._id);
-            if (!updatedComment) {
+            likes = await User.likeComment(userId, comment._id);
+            if (likes === null) {
                 const err = new Error('Comment already liked');
                 err.statusCode = 409;
                 throw err;
             }
         }
         else {
-            updatedComment = await User.unlikeComment(userId, comment._id);
-            if (!updatedComment) {
+            likes = await User.unlikeComment(userId, comment._id);
+            if (likes === null) {
                 const err = new Error("Comment isn't liked");
                 err.statusCode = 409;
                 throw err;
@@ -126,8 +133,8 @@ exports.updateCommentLikes = async (req, res, next) => {
         }
 
         return res.status(200).json({
-            message: 'Likes updated successfully',
-            ...updatedComment
+            message: action === 1 ? 'Comment liked successfully' : 'Comment unliked successfully',
+            likes
         });
     }
     catch (err) {

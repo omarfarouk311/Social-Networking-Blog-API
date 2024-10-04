@@ -1,30 +1,29 @@
 const { Router } = require('express');
 const { notAllowed, notFound } = require('../middlewares/errors');
-const { checkPostExistence, validateLikesUpdating, handleValidationErrors, validatePostId,
-    validateStructure } = require('../middlewares/validation/post');
+const { checkPostExistence, validateLikesUpdating, handleValidationErrors, validatePostId } = require('../middlewares/validation/post');
 const { checkCommentExistence, validateCommentCreation, validateCommentUpdating, validateQueryParams,
     validateRouteParams } = require('../middlewares/validation/comments');
 const { authorizeCommentDeletion, authorizeCommentUpdating } = require('../middlewares/authorization/comment');
 const commentsController = require('../controllers/comments');
 const { validatePage } = require('../middlewares/validation/user');
-const router = Router();
+const router = Router({ mergeParams: true });
 
-router.route('/comments')
-    .get(validateQueryParams, validatePostId, validateStructure, handleValidationErrors, checkPostExistence,
+router.route('/')
+    .get(validateQueryParams, validatePostId, handleValidationErrors, checkPostExistence,
         commentsController.getComments)
-    .post(validatePostId, validateCommentCreation, validateStructure, handleValidationErrors, checkPostExistence,
+    .post(validatePostId, validateCommentCreation, handleValidationErrors, checkPostExistence,
         commentsController.createComment)
     .all(notAllowed);
 
 router.route('/:commentId')
-    .put(validateCommentUpdating, validateStructure, handleValidationErrors, authorizeCommentUpdating, commentsController.updateComment)
-    .delete(validateRouteParams, validateStructure, handleValidationErrors, authorizeCommentDeletion, commentsController.deleteComment)
+    .put(validateCommentUpdating, handleValidationErrors, checkPostExistence, authorizeCommentUpdating, commentsController.updateComment)
+    .delete(validateRouteParams, handleValidationErrors, checkPostExistence, authorizeCommentDeletion, commentsController.deleteComment)
     .all(notAllowed);
 
 router.route('/:commentId/likes')
-    .get(validateRouteParams, validatePage, validateStructure, handleValidationErrors, checkCommentExistence,
+    .get(validateRouteParams, validatePage, handleValidationErrors, checkCommentExistence,
         commentsController.getCommentsLikers)
-    .patch(validateRouteParams, validateLikesUpdating, validateStructure, handleValidationErrors, checkCommentExistence,
+    .patch(validateRouteParams, validateLikesUpdating, handleValidationErrors, checkCommentExistence,
         commentsController.updateCommentLikes)
     .all(notAllowed)
 

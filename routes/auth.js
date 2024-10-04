@@ -2,12 +2,12 @@ const { Router } = require('express');
 const { notAllowed, notFound } = require('../middlewares/errors');
 const authController = require('../controllers/auth');
 const { validateSignup } = require('../middlewares/validation/user');
-const { validateStructure, handleValidationErrors } = require('../middlewares/validation/post');
+const { handleValidationErrors } = require('../middlewares/validation/post');
 const upload = require('../util/multer configurations').single('image');
 const router = Router();
 
 router.route('/signup')
-    .post(upload, validateSignup, validateStructure, handleValidationErrors, authController.signUp)
+    .post(upload, validateSignup, handleValidationErrors, authController.signUp)
     .all(notAllowed);
 
 router.route('/login')
@@ -21,7 +21,7 @@ router.route('/refresh-token')
 router.route('/logout')
     .post(authController.authenticateUser, authController.logOut)
     .all(notAllowed);
-
+ 
 router.all('*', notFound);
 
 module.exports = router

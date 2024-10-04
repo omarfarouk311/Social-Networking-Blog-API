@@ -1,4 +1,4 @@
-const { body, query } = require('express-validator');
+const { body, query, param } = require('express-validator');
 const User = require('../../models/user');
 const { ObjectId } = require('mongodb');
 
@@ -93,8 +93,6 @@ exports.validatePage = query('page')
 
 exports.validateFollowAction = [
     body('followedId')
-        .notEmpty()
-        .withMessage("followedId can't be empty")
         .isString()
         .withMessage("followedId must be a string")
         .trim()
@@ -103,9 +101,9 @@ exports.validateFollowAction = [
         .bail()
         .customSanitizer(followedId => ObjectId.createFromHexString(followedId))
         .custom(async (followedId, { req }) => {
-            if (req.userId.equals(followedId)) throw new Error('Invalid followedId');
+            if (req.userId.equals(followedId)) throw new Error("Invalid followedId, A user can't follow himself");
             const found = await User.getUser({ _id: followedId }, { _id: 1 });
-            if (!found) throw new Error('Invalid followedId');
+            if (!found) throw new Error('Invalid followedId, This Id is not found');
             return true;
         })
     ,
@@ -115,3 +113,12 @@ exports.validateFollowAction = [
         .custom(action => action === 1 || action === -1)
         .withMessage('action value must be an integer with value equals 1 or -1')
 ];
+
+exports.validateUserId = param('userId')
+    .isString()
+    .withMessage("userId must be a string")
+    .trim()
+    .isMongoId()
+    .withMessage('userId must be a valid MongoDb ObjectId')
+    .bail()
+    .customSanitizer(userId => ObjectId.createFromHexString(userId))

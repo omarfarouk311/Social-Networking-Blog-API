@@ -7,7 +7,7 @@ exports.notAllowed = (req, res, next) => {
 };
 
 exports.notFound = (req, res, next) => {
-    const err = new Error('Page not found');
+    const err = new Error('Resource not found');
     err.statusCode = 404;
     return next(err);
 };

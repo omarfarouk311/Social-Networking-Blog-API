@@ -41,7 +41,7 @@ module.exports = class Post {
         return db.collection('posts').updateMany(filter, update, options);
     }
 
-    static async getPostsInfo(filter, userId, prepared = false) {
+    static async getPostsInfo(filter, viewerId, prepared = false) {
         const db = getDb();
         const pipeline = [{ $match: filter }];
 
@@ -72,8 +72,8 @@ module.exports = class Post {
             },
             {
                 $addFields: {
-                    liked: { $in: [userId, '$likingUsersIds'] },
-                    bookmarked: { $in: [userId, '$bookmarkingUsersIds'] },
+                    liked: { $in: [viewerId, '$likingUsersIds'] },
+                    bookmarked: { $in: [viewerId, '$bookmarkingUsersIds'] },
                 }
             },
             {
@@ -98,7 +98,7 @@ module.exports = class Post {
         return db.collection('posts').find(filter, options).project(projection);
     }
 
-    static async getPostInfo(filter, userId) {
+    static async getPostInfo(filter, viewerId) {
         const db = getDb();
         const resultPost = await db.collection('posts').aggregate([
             {
@@ -130,6 +130,7 @@ module.exports = class Post {
                     foreignField: 'postId',
                     as: 'comments',
                     pipeline: [
+                        { $match: { parentId: null } },
                         { $sort: { _id: -1 } },
                         { $limit: 10 },
                         {
@@ -143,7 +144,14 @@ module.exports = class Post {
                                 ]
                             }
                         },
-                        { $unwind: '$creator' }
+                        { $unwind: '$creator' },
+                        { $addFields: { liked: { $in: [viewerId, '$likingUsersIds'] } } },
+                        {
+                            $project: {
+                                likingUsersIds: 0,
+                                parentsIds: 0
+                            }
+                        }
                     ]
                 }
             },
@@ -152,8 +160,8 @@ module.exports = class Post {
                     lastCommentId: {
                         $ifNull: [{ $arrayElemAt: ['$comments._id', -1] }, null]
                     },
-                    liked: { $in: [userId, '$likingUsersIds'] },
-                    bookmarked: { $in: [userId, '$bookmarkingUsersIds'] },
+                    liked: { $in: [viewerId, '$likingUsersIds'] },
+                    bookmarked: { $in: [viewerId, '$bookmarkingUsersIds'] },
                 }
             },
             {

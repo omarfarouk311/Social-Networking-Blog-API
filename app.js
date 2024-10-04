@@ -8,7 +8,6 @@ const feedRouter = require('./routes/feed');
 const bookmarksRouter = require('./routes/bookmarks');
 const profileRouter = require('./routes/profile');
 const authRouter = require('./routes/auth');
-const { authenticateUser } = require('./controllers/auth');
 const cookieParser = require('cookie-parser');
 
 const app = express();
@@ -23,13 +22,13 @@ app.use(cookieParser(process.env.COOKIE_SECRET));
 
 app.use(express.json());
 
-app.use('/images', express.static(join(__dirname, 'images')));
+app.use(express.static(__dirname));
 
-app.use('/feed', authenticateUser, feedRouter);
+app.use('/feed', feedRouter);
 
-app.use('/bookmarks', authenticateUser, bookmarksRouter);
+app.use('/bookmarks', bookmarksRouter);
 
-app.use('/profile', authenticateUser, profileRouter);
+app.use('/profile/:userId', profileRouter);
 
 app.use(authRouter);
 
