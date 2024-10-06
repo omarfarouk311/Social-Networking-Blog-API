@@ -1,0 +1,28 @@
+services:
+  api:
+    build: .
+    volumes:
+      - images:/code/images
+    networks:
+      - backend-net
+
+  nginx:
+    image: nginx:latest
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/proxy.conf:/etc/nginx/proxy.conf
+    networks:
+      - backend-net
+    ports:
+      - 8080:80
+    command: /bin/sh -c "sleep 3 && nginx -g 'daemon off;'"
+
+networks:
+  backend-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: "10.0.0.0/24"
+
+volumes:
+  images:
