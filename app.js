@@ -22,7 +22,9 @@ app.use(cookieParser(process.env.COOKIE_SECRET));
 
 app.use(express.json());
 
-app.use(express.static(__dirname));
+app.use(express.static(__dirname, {
+    setHeaders: res => res.set('Cache-Control', 'public, max-age=86400')
+}));
 
 app.use('/feed', feedRouter);
 
