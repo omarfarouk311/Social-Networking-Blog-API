@@ -8,13 +8,6 @@
 This project is a RESTful API for a social networking blog platform, providing functionalities like user authentication, post and comment management, bookmarks, user management, and more. It is built with Node.js, Express.js, MongoDB, Nginx for load balancing and caching, and Docker for containerization. The API is tested using Postman, and a collection is available for easy reference.
 
 ## Features
-
-
-
-
-Additional Features
-Pagination: Efficiently handles large sets of data, allowing users to navigate through posts and comments easily.
-
 - Authentication & Authorization
     - Utilizes JWT, refresh tokens that allows users to refresh their token without having to log in repeatedly.
     - Maintaining a whitelist of valid tokens stored in the database.
@@ -38,7 +31,9 @@ Pagination: Efficiently handles large sets of data, allowing users to navigate t
   - Delete Comments: Users have the option to remove their comments at any time.
   - Like Comments: Users can express approval by liking comments on posts.
   - Replies to Comments: Users can reply to comments, creating threaded discussions.
-- Pagination: Implemented using the last ID of fetched posts or comments to leverage indexes and enhance performance.
+- Pagination
+    - Efficiently handles large sets of data, allowing users to navigate through posts and comments easily.
+    - Implemented using the last ID of fetched posts or comments to leverage indexes and enhance performance.
 - Facade Design Pattern: Manages complex delete operations that contain sub-operations such as removing comments and associated likes.
 - Dockerized Application: The project uses Docker to simplify deployment and management, with a Docker Compose file included for easy setup.
 
@@ -52,57 +47,58 @@ Pagination: Efficiently handles large sets of data, allowing users to navigate t
 ![database](database%20schema.png)
 
 ## Reverse Proxy
-- Implemented L7 load balancing using Nginx as a reverse proxy and used least connections algorithm to handle traffic distribution, ensuring high availability and fault tolerance.
+- Implemented L7 load balancing using Nginx as a reverse proxy to handle traffic distribution, ensuring high availability and fault tolerance.
+- used least connections algorithm for load balancing to ensure that the traffic is routed to the server that has the least connections.
 - Enabled caching to cache images of users and posts.
 
 ## Installation
 Follow these steps to set up the project locally:
 
 1. Clone the Repository
-First, clone the repository to your local machine using the following command:
-
-```sh
-git clone https://github.com/omarfarouk311/Social-Networking-Blog-API.git
-cd Social-Networking-Blog-API
-```
+    First, clone the repository to your local machine using the following command:
+    
+    ```bash
+    git clone https://github.com/omarfarouk311/Social-Networking-Blog-API.git
+    cd Social-Networking-Blog-API
+    ```
+    
 2. Set Up the .env File
-Create a `.env` file in the root of the project to store your environment variables. You can use the provided example file as a reference. Here’s an example of what to include in your .env file:
-
-```plaintext
-# MongoDB connection string
-DB_URI=mongodb://<username>:<password>@localhost:27017/<dbname>
-
-# allowed Origins for CORS
-ORIGIN=allowed origin
-
-# JWT settings
-JWT_SECRET=your JWT secret
-
-# Refresh token settings
-REFRESH_TOKEN_SECRET=your refresh token secret
-
-# Cookies signing secret
-COOKIE_SECRET=your cookie secret
-
-# Email settings
-MAILGUN_API_KEY=your mailgun api key
-MAILGUN_DOMAIN=your mailgun domain
-SENDER_EMAIL=you sender email
-
-PORT=the port number that the app will listen on, note that it should be set to 8080 because nginx is configured to forward traffic on it.
-
-Make sure to replace the placeholder values with your actual configuration.
-```
+    Create a `.env` file in the root of the project to store your environment variables. You can use the provided example file as a reference. Here’s an example of what to include in your .env file:
+    
+    ```plaintext
+    # MongoDB connection string
+    DB_URI=mongodb://<username>:<password>@localhost:27017/<dbname>
+    
+    # allowed Origins for CORS
+    ORIGIN=allowed origin
+    
+    # JWT settings
+    JWT_SECRET=your JWT secret
+    
+    # Refresh token settings
+    REFRESH_TOKEN_SECRET=your refresh token secret
+    
+    # Cookies signing secret
+    COOKIE_SECRET=your cookie secret
+    
+    # Email settings
+    MAILGUN_API_KEY=your mailgun api key
+    MAILGUN_DOMAIN=your mailgun domain
+    SENDER_EMAIL=you sender email
+    
+    PORT=the port number that the app will listen on, note that it should be set to 8080 because nginx is configured to forward traffic on it.
+    
+    Make sure to replace the placeholder values with your actual configuration.
+    ```
 
 3. Run Docker Compose
-Ensure you have Docker and Docker Compose installed on your machine. Once you have Docker set up, run the following command to start the application:
-```bash
-docker-compose up --scale api=3 -d
-```
-This command will build the Docker images, create networks and volumes, and start the application with all its services.
+    Ensure you have Docker and Docker Compose installed on your machine. Once you have Docker set up, run the following command to start the application:
+    ```bash
+    docker-compose up --scale api=3 -d
+    ```
+    This command will build the Docker images, create networks and volumes, and start the application with all its services.
 
-4. Access the API
-Once the services are up and running, you can access the API at http://localhost:8080, where `8080` is the port number exposed by nginx in the docker-compose.yml file.
+4. Access the API Once the services are up and running, you can access the API at http://localhost:8080, where `8080` is the port number exposed by nginx in the docker-compose.yml file.
 
 ## API Documentation
 You can find the API documentation [here](https://documenter.getpostman.com/view/34071055/2sAXxMgu6D)
