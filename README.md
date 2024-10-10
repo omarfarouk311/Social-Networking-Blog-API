@@ -97,6 +97,7 @@ Follow these steps to set up the project locally:
     docker-compose up --scale api=3 -d
     ```
     This command will build the Docker images, create networks and volumes, and start the application with all its services.
+    Note that it starts 3 instances from the api service, but you can adjust it to more or less.
 
 4. Access the API Once the services are up and running, you can access the API at http://localhost:8080, where `8080` is the port number exposed by nginx in the docker-compose.yml file.
 

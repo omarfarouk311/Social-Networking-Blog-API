@@ -15,7 +15,8 @@ services:
       - backend-net
     ports:
       - 8080:80
-    command: /bin/sh -c "sleep 3 && nginx -g 'daemon off;'"
+    depends_on:
+      - api
 
 networks:
   backend-net:
