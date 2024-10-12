@@ -54,7 +54,7 @@ This project is a RESTful API for a social networking blog platform, providing f
 ## Installation
 Follow these steps to set up the project locally:
 
-1. Clone the Repository
+1. Clone the Repository  
     First, clone the repository to your local machine using the following command:
     
     ```bash
@@ -62,7 +62,7 @@ Follow these steps to set up the project locally:
     cd Social-Networking-Blog-API
     ```
     
-2. Set Up the .env File
+2. Set Up the .env File  
     Create a `.env` file in the root of the project to store your environment variables. You can use the provided example file as a reference. Here’s an example of what to include in your .env file:
     
     ```plaintext
@@ -91,7 +91,7 @@ Follow these steps to set up the project locally:
     Make sure to replace the placeholder values with your actual configuration.
     ```
 
-3. Run Docker Compose
+3. Run Docker Compose  
     Ensure you have Docker and Docker Compose installed on your machine. Once you have Docker set up, run the following command to start the application:
     ```bash
     docker-compose up --scale api=3 -d
